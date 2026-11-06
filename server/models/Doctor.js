@@ -6,12 +6,14 @@ const doctorSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      maxlength: 100,
     },
 
     specialty: {
       type: String,
       required: true,
       trim: true,
+      maxlength: 100,
     },
 
     experience: {
@@ -37,6 +39,7 @@ const doctorSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+      maxlength: 1000,
     },
 
     available: {

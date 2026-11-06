@@ -3,6 +3,7 @@
 // If SMTP is not configured, sendMail() safely skips email sending.
 
 const nodemailer = require("nodemailer");
+const logger = require("./logger");
 
 let transporter = null;
 
@@ -32,6 +33,10 @@ function getTransporter() {
       host: process.env.SMTP_HOST,
       port,
       secure: port === 465,
+      // Fail quickly instead of nodemailer's multi-minute defaults.
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -62,7 +67,7 @@ async function sendMail({ to, subject, text, html }) {
 
     return { sent: true };
   } catch (error) {
-    console.error("Email error:", error.message);
+    logger.error("email.send_failed", { error: { name: error.name, code: error.code, message: error.message } });
 
     return { error: error.message };
   }

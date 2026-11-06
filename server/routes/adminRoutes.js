@@ -4,16 +4,17 @@ const Doctor = require("../models/Doctor");
 const Appointment = require("../models/Appointment");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminMiddleware = require("../middleware/adminMiddleware");
+const { handle } = require("../utils/errors");
 
 const router = express.Router();
-console.log("Admin routes file loaded successfully");
 
 // Every route in this file requires an admin token.
 router.use(authMiddleware, adminMiddleware);
 
 // GET /api/admin/stats - counts for the dashboard overview
-router.get("/stats", async (req, res) => {
-  try {
+router.get(
+  "/stats",
+  handle("Unable to load statistics", async (req, res) => {
     const [doctors, patients, statusCounts] = await Promise.all([
       Doctor.countDocuments(),
       User.countDocuments({ role: "patient" }),
@@ -38,19 +39,13 @@ router.get("/stats", async (req, res) => {
       success: true,
       stats: { doctors, patients, appointments },
     });
-  } catch (error) {
-    console.error("Admin stats error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load statistics",
-    });
-  }
-});
+  })
+);
 
 // GET /api/admin/patients - registered patients with their booking counts
-router.get("/patients", async (req, res) => {
-  try {
+router.get(
+  "/patients",
+  handle("Unable to load patients", async (req, res) => {
     const [patients, counts] = await Promise.all([
       User.find({ role: "patient" })
         .select("name email phone age gender createdAt")
@@ -67,9 +62,7 @@ router.get("/patients", async (req, res) => {
       ]),
     ]);
 
-    const countByPatient = new Map(
-      counts.map((row) => [String(row._id), row])
-    );
+    const countByPatient = new Map(counts.map((row) => [String(row._id), row]));
 
     const result = patients.map((patient) => {
       const row = countByPatient.get(String(patient._id));
@@ -91,14 +84,7 @@ router.get("/patients", async (req, res) => {
       success: true,
       patients: result,
     });
-  } catch (error) {
-    console.error("Admin patients error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load patients",
-    });
-  }
-});
+  })
+);
 
 module.exports = router;

@@ -1,7 +1,8 @@
-
 const express = require("express");
 const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
+const { validate, rules } = require("../middleware/validate");
+const { handle } = require("../utils/errors");
 
 const router = express.Router();
 
@@ -18,12 +19,28 @@ const publicProfile = (user) => ({
   createdAt: user.createdAt,
 });
 
+const updateProfileSchema = {
+  body: {
+    name: rules.string({ allowEmpty: true, min: 2, max: 100, message: "Please enter a valid name" }),
+    phone: rules.string({
+      allowEmpty: true,
+      max: 20,
+      pattern: /^[+\d][\d\s-]{6,19}$/,
+      message: "Please enter a valid phone number",
+    }),
+    age: rules.number({ nullable: true, integer: true, min: 0, max: 120, message: "Please enter a valid age" }),
+    gender: rules.oneOf(GENDERS, { allowEmpty: true, message: "Please select a valid gender option" }),
+  },
+};
+
 // ======================================
 // GET PATIENT PROFILE
 // GET /api/profile
 // ======================================
-router.get("/", authMiddleware, async (req, res) => {
-  try {
+router.get(
+  "/",
+  authMiddleware,
+  handle("Unable to fetch profile", async (req, res) => {
     const user = await User.findById(req.user.userId).select("-password");
 
     if (!user || user.role !== "patient") {
@@ -37,31 +54,19 @@ router.get("/", authMiddleware, async (req, res) => {
       success: true,
       profile: publicProfile(user),
     });
-  } catch (error) {
-    console.error("Get profile error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to fetch profile",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // UPDATE PATIENT PROFILE
 // PUT /api/profile
 // ======================================
-router.put("/", authMiddleware, async (req, res) => {
-  try {
-    const { name, phone, age, gender } = req.body;
-
-    const hasEditableField =
-      name !== undefined ||
-      phone !== undefined ||
-      age !== undefined ||
-      gender !== undefined;
-
-    if (!hasEditableField) {
+router.put(
+  "/",
+  authMiddleware,
+  validate(updateProfileSchema),
+  handle("Unable to update profile", async (req, res) => {
+    if (Object.keys(req.body).length === 0) {
       return res.status(400).json({
         success: false,
         message: "Please provide at least one profile field to update",
@@ -77,68 +82,7 @@ router.put("/", authMiddleware, async (req, res) => {
       });
     }
 
-    // Validate and update name.
-    if (name !== undefined) {
-      if (typeof name !== "string" || name.trim().length < 2) {
-        return res.status(400).json({
-          success: false,
-          message: "Please enter a valid name",
-        });
-      }
-
-      user.name = name.trim();
-    }
-
-    // Validate and update phone.
-    if (phone !== undefined) {
-      const cleanPhone = String(phone).trim();
-
-      if (cleanPhone && !/^[+\d][\d\s-]{6,19}$/.test(cleanPhone)) {
-        return res.status(400).json({
-          success: false,
-          message: "Please enter a valid phone number",
-        });
-      }
-
-      user.phone = cleanPhone;
-    }
-
-    // Validate and update age.
-    if (age !== undefined) {
-      if (age === null || age === "") {
-        user.age = null;
-      } else {
-        const numericAge = Number(age);
-
-        if (
-          !Number.isInteger(numericAge) ||
-          numericAge < 0 ||
-          numericAge > 120
-        ) {
-          return res.status(400).json({
-            success: false,
-            message: "Please enter a valid age",
-          });
-        }
-
-        user.age = numericAge;
-      }
-    }
-
-    // Validate and update gender.
-    if (gender !== undefined) {
-      const cleanGender = String(gender).trim();
-
-      if (!GENDERS.includes(cleanGender)) {
-        return res.status(400).json({
-          success: false,
-          message: "Please select a valid gender option",
-        });
-      }
-
-      user.gender = cleanGender;
-    }
-
+    Object.assign(user, req.body);
     await user.save();
 
     return res.status(200).json({
@@ -146,14 +90,7 @@ router.put("/", authMiddleware, async (req, res) => {
       message: "Profile updated successfully",
       profile: publicProfile(user),
     });
-  } catch (error) {
-    console.error("Update profile error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to update profile",
-    });
-  }
-});
+  })
+);
 
 module.exports = router;

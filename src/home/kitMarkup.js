@@ -47,7 +47,7 @@ function searchFragment(doctors) {
     : [];
   const opts = more.length ? escape(JSON.stringify({ queries: [{ q: stem, rows: more }] })) : "";
 
-  return `<div class="ui ui-panel ui-search" data-ui="search" data-ui-loop${opts ? ` data-ui-opts="${opts}"` : ""}>
+  return `<div class="ui ui-panel ui-search" data-ui="search" data-ui-cycles="2"${opts ? ` data-ui-opts="${opts}"` : ""}>
   <div class="ui-search__field">${SEARCH_ICON}<span class="ui-search__q"><span data-search-q>cardio</span><i class="ui-search__caret"></i></span><kbd class="ui-search__kbd">Enter</kbd></div>
   <div class="ui-search__group">Doctors</div>
   <ul class="ui-search__list" data-search-list>${items}</ul>
@@ -129,17 +129,17 @@ export function stepsMarkup(doctors, slots) {
     <h2 id="how-h">Booking a visit takes three steps</h2>
     <ol class="mo-pc__steps">
       <li class="mo-pc__step">
-        <h3>Specialist search by name or field</h3>
+        <h3>Doctor search by name or field</h3>
         <p>Search by a doctor's name or a field such as cardiology, and see the fee and experience before you choose.</p>
         <figure class="mo-pc__visual mo-pc__visual--lit" data-ui-pause-host><div class="fit" style="--fit-max:420px">${searchFragment(doctors)}</div></figure>
       </li>
       <li class="mo-pc__step">
-        <h3>Calendar of free dates and times</h3>
+        <h3>Booking calendar with free times</h3>
         <p>Choose any day from today on. Times another patient already holds are greyed out, so a slot you pick is free.</p>
         <figure class="mo-pc__visual mo-pc__visual--lit"><div class="fit" style="--fit-max:420px">${calendarFragment(doctor, slots)}</div></figure>
       </li>
       <li class="mo-pc__step">
-        <h3>Request status from pending to confirmed</h3>
+        <h3>Booking status from pending to confirmed</h3>
         <p>Your request starts as pending. You get a notification the moment the clinic confirms, reschedules or cancels it.</p>
         <figure class="mo-pc__visual mo-pc__visual--lit"><div class="fit" style="--fit-max:420px">${notifyFragment(doctor, slots)}</div></figure>
       </li>

@@ -67,13 +67,14 @@
 .bk-doc span:not(.ui-avatar) { font-size: 13px; color: #6d6058; text-transform: capitalize; }
 .bk-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
 .bk-slots > span {
-  position: relative; display: grid; place-items: center; height: 34px; border-radius: 10px;
+  position: relative; display: grid; place-items: center; height: 34px; border-radius: 999px;
   box-shadow: inset 0 0 0 1px rgb(42 29 23 / 0.12); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-/* the picked slot: its own layer, so the loop can take the pick away and press it again */
+/* the picked slot: its own layer, so the loop can take the pick away and press it again. It takes
+   the page's primary look (the action fill on a pill), so the mock adds no third button style. */
 .bk-pick {
   position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; font-style: normal;
-  background: var(--action); color: var(--action-ink);
+  background: var(--action); color: var(--action-ink); font-weight: 500;
 }
 .bk-steps .bk-pick[data-step] { transition: opacity 240ms var(--m-ease, ease), transform 240ms var(--m-ease, ease); }
 .bk-steps .bk-pick[data-step].is-off { transform: scale(.92); }
@@ -279,7 +280,10 @@ main > section > .wrap > .app.fill { flex: 1 0 auto; }
   .app.ui { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .app > .app__pane--open { display: none; }
   #doctors { --hm: 2; }
+  /* the window is as tall as its list and the open doctor: no stretched row, no blank pane under the
+     last doctor (the section's two screens leave their spare ground below the window) */
   main > section > .wrap > .app.fill { flex: 0 0 auto; }
+  .app.ui { grid-template-rows: auto auto; }
   .fd-row { padding-block: 12px; }
   .fd-more .fd-slots { display: grid; }
   .app > .app__bar { flex-wrap: wrap; padding: 12px; }
@@ -310,7 +314,7 @@ main > section > .wrap > .app.fill { flex: 1 0 auto; }
   [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__step { grid-template-columns: minmax(0, 1fr); }
   [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__step :is(h3, p) { grid-column: 1; }
   [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__step .mo-pc__visual { grid-column: 1; grid-row: auto; margin-top: var(--s-4); }
-  [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual--lit { height: calc(44svh - 60px); padding: 32px; }
+  [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual--lit { height: calc(65svh - 242px); min-height: 300px; padding: 32px; }
 }
 @media (max-width: 639px) {
   [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual--lit { height: 38svh; padding: 20px 16px; }
@@ -368,16 +372,66 @@ button.link { border: 0; padding: 0; background: none; cursor: pointer; font: in
   .footer .closing__links .footer__col { grid-column: auto / span 4; }
 }
 
-/* below 1280 the centred links and the actions meet: the text actions (sign in, account) leave the
-   bar; the footer and the hero's second button still reach them */
-@media (max-width: 1279px) {
+/* live, the moment's heading starts --padt under its screen's top like every other section's h2 */
+main [data-moment="pinned-chapters"][data-moment].is-live > .mo-pc__grid { align-content: start; padding-top: var(--padt); }
+
+/* signed in: the account action opens the patient's dashboard */
+.nav__account {
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 4px; border: 0; border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 6%, transparent); color: var(--ink); font: 500 15px/1 var(--font-text); cursor: pointer;
+  transition: background-color var(--m-out) var(--m-ease), transform var(--m-press) var(--m-ease);
+}
+.nav__avatar { width: 32px; height: 32px; font-size: 12px; }
+@media (hover: hover) and (pointer: fine) { .nav__account:hover { background: color-mix(in oklab, var(--ink) 11%, transparent); transition-duration: var(--m-in); } }
+.nav__account:active { transform: scale(.97); transition-duration: var(--m-press); }
+/* the closed bar below 1280: the centred links and the actions meet, so the account shows as its
+   avatar alone and the text actions (sign in, sign out) wait in the phone sheet or the footer */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .nav__account { padding-right: 4px; }
+  .nav__account-label { display: none; }
   .nav__actions > .nav__link { display: none; }
 }
+/* below 1024 the kit keeps only the main button in the closed bar; on a small phone the bar keeps the
+   logo and the menu, the main action is the hero's and the sheet's */
+@media (max-width: 479px) { .nav:not(.is-open) .nav__actions > .btn { display: none; } }
+
+/* the open sheet (below 1024): every action, full width; the account first when signed in */
+@media (max-width: 1023px) {
+  .nav.is-open .nav__links { overscroll-behavior: contain; }
+  .nav.is-open .nav__actions > .nav__account {
+    order: -1; display: flex; justify-content: center; width: 100%; height: 48px; padding: 0 16px 0 8px; gap: 10px;
+  }
+  .nav.is-open .nav__actions > .nav__account .nav__account-label { display: inline; }
+}
+
+/* ---------------------------------------------------------------- scroll motion (client request)
+   useScrollMotion.js holds only what sits below the first screen at mount (.sr-hold) and plays each
+   once (.sr-in): transform and opacity only, so nothing shifts the layout */
+@keyframes sr-rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes sr-lift { from { opacity: 0; transform: translateY(28px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes sr-slide { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+.sr-hold { opacity: 0; }
+.sr--rise.sr-hold { transform: translateY(20px); }
+.sr--lift.sr-hold { transform: translateY(28px) scale(.98); }
+.sr--slide.sr-hold { transform: translateX(-14px); }
+.sr-in { animation: sr-rise 650ms cubic-bezier(.2, .8, .2, 1) var(--sr-delay, 0ms) both; }
+.sr--lift.sr-in { animation-name: sr-lift; animation-duration: 800ms; }
+.sr--slide.sr-in { animation-name: sr-slide; animation-duration: 520ms; }
+.hero__window > canvas { will-change: transform; }
 
 /* ---------------------------------------------------------------- reduced motion: everything rests */
 @media (prefers-reduced-motion: reduce) {
+  .sr-hold { opacity: 1; transform: none; }
+  .sr-in { animation: none; }
+  .hero__window > canvas { transform: none !important; }
   .fd-open.is-swap > *, .fd-open.is-swap .fd-open__av, .fd-rows.is-swap > li, .fd-more.is-swap > * { animation: none; }
   .fd-row, .fd-row::before, .fd-row .ui-avatar, .fd-chip, .fd-search, .fd-clear, .fd-all, .bk-steps .bk-pick[data-step], .dash-win__rows li { transition: none; }
   .fd-row:hover, .fd-row:active, .fd-chip:active, .fd-clear:active, .fd-all:active { transform: none; }
   .fd-row:hover .ui-avatar { transform: none; }
+}
+
+/* the kit turns a phone .btn-row's secondary into a text link, but the pill look keeps its tint: an
+   underlined pill. Keep the plain pill secondary, as on the app screens (shell.css). */
+@media (max-width: 639px) {
+  .home .btn-row > .btn--secondary { text-decoration: none; }
 }

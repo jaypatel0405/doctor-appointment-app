@@ -28,3 +28,8 @@ dist-ssr
 
 # Local env files
 .env
+.claude
+.taste-skill
+# Claude Code: installed skills are restored from skills-lock.json; local settings stay local
+.claude/skills/
+.claude/settings.local.json

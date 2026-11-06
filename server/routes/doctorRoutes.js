@@ -1,10 +1,10 @@
-
 const express = require("express");
-const mongoose = require("mongoose");
 const Doctor = require("../models/Doctor");
 const Appointment = require("../models/Appointment");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminMiddleware = require("../middleware/adminMiddleware");
+const { validate, rules } = require("../middleware/validate");
+const { handle } = require("../utils/errors");
 
 const router = express.Router();
 
@@ -20,131 +20,78 @@ const publicDoctor = (doctor) => ({
   available: doctor.available !== false,
 });
 
-// Validate and normalize doctor input.
-function parseDoctorInput(body, { partial = false } = {}) {
-  const errors = [];
-  const output = {};
+// ---------- validation schemas ----------
 
-  const has = (key) =>
-    body[key] !== undefined &&
-    body[key] !== null &&
-    body[key] !== "";
+const idParams = {
+  params: { id: rules.objectId({ required: true, message: "Invalid doctor ID" }) },
+};
 
-  if (has("name")) {
-    const name = String(body.name).trim();
-
-    if (name.length < 2) {
-      errors.push("Doctor name must contain at least 2 characters.");
-    }
-
-    output.name = name;
-  } else if (!partial) {
-    errors.push("Doctor name is required.");
-  }
-
-  if (has("specialty")) {
-    const specialty = String(body.specialty).trim();
-
-    if (specialty.length < 2) {
-      errors.push("Specialty must contain at least 2 characters.");
-    }
-
-    output.specialty = specialty;
-  } else if (!partial) {
-    errors.push("Specialty is required.");
-  }
-
-  if (has("fee")) {
-    const fee = Number(body.fee);
-
-    if (!Number.isFinite(fee) || fee < 0) {
-      errors.push("Fee must be a valid non-negative number.");
-    } else {
-      output.fee = fee;
-    }
-  } else if (!partial) {
-    errors.push("Consultation fee is required.");
-  }
-
-  if (has("experience")) {
-    const experience = Number(body.experience);
-
-    if (!Number.isFinite(experience) || experience < 0) {
-      errors.push("Experience must be a valid non-negative number.");
-    } else {
-      output.experience = experience;
-    }
-  }
-
-  if (has("rating")) {
-    const rating = Number(body.rating);
-
-    if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
-      errors.push("Rating must be between 0 and 5.");
-    } else {
-      output.rating = rating;
-    }
-  }
-
-  if (body.bio !== undefined) {
-    output.bio = String(body.bio).trim();
-  }
-
-  if (body.available !== undefined) {
-    if (typeof body.available === "boolean") {
-      output.available = body.available;
-    } else if (body.available === "true") {
-      output.available = true;
-    } else if (body.available === "false") {
-      output.available = false;
-    } else {
-      errors.push("Availability must be true or false.");
-    }
-  }
-
-  return { errors, output };
+// Empty strings / null count as "not provided" (except bio, which may be cleared).
+function doctorBody({ partial }) {
+  return {
+    name: rules.string({
+      required: !partial,
+      min: 2,
+      max: 100,
+      requiredMessage: "Doctor name is required.",
+      message: "Doctor name must contain at least 2 characters.",
+      maxMessage: "Doctor name must be at most 100 characters.",
+    }),
+    specialty: rules.string({
+      required: !partial,
+      min: 2,
+      max: 100,
+      requiredMessage: "Specialty is required.",
+      message: "Specialty must contain at least 2 characters.",
+      maxMessage: "Specialty must be at most 100 characters.",
+    }),
+    fee: rules.number({
+      required: !partial,
+      min: 0,
+      max: 1000000,
+      requiredMessage: "Consultation fee is required.",
+      message: "Fee must be a valid non-negative number.",
+    }),
+    experience: rules.number({
+      min: 0,
+      max: 80,
+      message: "Experience must be a valid non-negative number.",
+    }),
+    rating: rules.number({ min: 0, max: 5, message: "Rating must be between 0 and 5." }),
+    bio: rules.string({
+      allowEmpty: true,
+      max: 1000,
+      message: "Bio must be at most 1000 characters.",
+    }),
+    available: rules.boolean({ message: "Availability must be true or false." }),
+  };
 }
 
 // ======================================
 // GET ALL DOCTORS - PUBLIC
 // GET /api/doctors
 // ======================================
-router.get("/", async (req, res) => {
-  try {
-    const doctors = await Doctor.find()
-      .sort({ createdAt: 1 })
-      .lean();
+router.get(
+  "/",
+  handle("Unable to fetch doctors", async (req, res) => {
+    const doctors = await Doctor.find().sort({ createdAt: 1 }).lean();
 
     return res.status(200).json({
       success: true,
       doctors: doctors.map(publicDoctor),
     });
-  } catch (error) {
-    console.error("Get doctors error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to fetch doctors",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // GET ONE DOCTOR - PUBLIC
 // GET /api/doctors/:id
 // ======================================
-router.get("/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid doctor ID",
-      });
-    }
-
-    const doctor = await Doctor.findById(id).lean();
+router.get(
+  "/:id",
+  validate(idParams),
+  handle("Unable to fetch doctor", async (req, res) => {
+    const doctor = await Doctor.findById(req.valid.params.id).lean();
 
     if (!doctor) {
       return res.status(404).json({
@@ -157,73 +104,41 @@ router.get("/:id", async (req, res) => {
       success: true,
       doctor: publicDoctor(doctor),
     });
-  } catch (error) {
-    console.error("Get doctor error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to fetch doctor",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // ADD DOCTOR - ADMIN ONLY
 // POST /api/doctors
 // ======================================
-router.post("/", authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { errors, output } = parseDoctorInput(req.body);
-
-    if (errors.length) {
-      return res.status(400).json({
-        success: false,
-        message: errors[0],
-      });
-    }
-
-    const doctor = await Doctor.create(output);
+router.post(
+  "/",
+  authMiddleware,
+  adminMiddleware,
+  validate({ body: doctorBody({ partial: false }) }),
+  handle("Unable to add doctor", async (req, res) => {
+    const doctor = await Doctor.create(req.body);
 
     return res.status(201).json({
       success: true,
       message: "Doctor added successfully",
       doctor: publicDoctor(doctor),
     });
-  } catch (error) {
-    console.error("Add doctor error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to add doctor",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // UPDATE DOCTOR - ADMIN ONLY
 // PUT /api/doctors/:id
 // ======================================
-router.put("/:id", authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid doctor ID",
-      });
-    }
-
-    const { errors, output } = parseDoctorInput(req.body, {
-      partial: true,
-    });
-
-    if (errors.length) {
-      return res.status(400).json({
-        success: false,
-        message: errors[0],
-      });
-    }
+router.put(
+  "/:id",
+  authMiddleware,
+  adminMiddleware,
+  validate({ ...idParams, body: doctorBody({ partial: true }) }),
+  handle("Unable to update doctor", async (req, res) => {
+    const { id } = req.valid.params;
+    const output = req.body;
 
     if (Object.keys(output).length === 0) {
       return res.status(400).json({
@@ -232,7 +147,7 @@ router.put("/:id", authMiddleware, adminMiddleware, async (req, res) => {
       });
     }
 
-    const doctor = await Doctor.findByIdAndUpdate(id, output, {
+    const doctor = await Doctor.findByIdAndUpdate(id, { $set: output }, {
       new: true,
       runValidators: true,
     });
@@ -248,18 +163,10 @@ router.put("/:id", authMiddleware, adminMiddleware, async (req, res) => {
     if (output.name || output.specialty) {
       const updates = {};
 
-      if (output.name) {
-        updates.doctorName = output.name;
-      }
+      if (output.name) updates.doctorName = output.name;
+      if (output.specialty) updates.specialty = output.specialty;
 
-      if (output.specialty) {
-        updates.specialty = output.specialty;
-      }
-
-      await Appointment.updateMany(
-        { doctorId: id },
-        { $set: updates }
-      );
+      await Appointment.updateMany({ doctorId: id }, { $set: updates });
     }
 
     return res.status(200).json({
@@ -267,30 +174,20 @@ router.put("/:id", authMiddleware, adminMiddleware, async (req, res) => {
       message: "Doctor updated successfully",
       doctor: publicDoctor(doctor),
     });
-  } catch (error) {
-    console.error("Update doctor error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to update doctor",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // DELETE DOCTOR - ADMIN ONLY
 // DELETE /api/doctors/:id
 // ======================================
-router.delete("/:id", authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid doctor ID",
-      });
-    }
+router.delete(
+  "/:id",
+  authMiddleware,
+  adminMiddleware,
+  validate(idParams),
+  handle("Unable to delete doctor", async (req, res) => {
+    const { id } = req.valid.params;
 
     const activeAppointments = await Appointment.countDocuments({
       doctorId: id,
@@ -318,14 +215,7 @@ router.delete("/:id", authMiddleware, adminMiddleware, async (req, res) => {
       success: true,
       message: "Doctor deleted successfully",
     });
-  } catch (error) {
-    console.error("Delete doctor error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to delete doctor",
-    });
-  }
-});
+  })
+);
 
 module.exports = router;

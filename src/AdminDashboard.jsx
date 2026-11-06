@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import AppBar, { TabRail } from './AppBar'
 import Checkbox from './ui/Checkbox'
+import { useConfirm } from './ui/useConfirm'
 import './dashboard.css'
 import {
   apiRequest,
@@ -20,6 +21,7 @@ import {
   formatDate,
   formatDateTime,
   getInitials,
+  todayString,
 } from './api'
 import { showToast } from './toast'
 
@@ -41,6 +43,58 @@ const EMPTY_DOCTOR_FORM = {
   rating: '',
   bio: '',
   available: true,
+}
+
+// One time format across the app: "8 Nov 2026, 1:41 PM".
+function formatStamp(value) {
+  return formatDateTime(value).replace(/\b(am|pm)\b/g, part => part.toUpperCase())
+}
+
+const DOCTOR_FIELD_ORDER = ['name', 'specialty', 'experience', 'fee', 'rating', 'bio']
+
+// A 400/409 means the data changed elsewhere (closed, booked, deleted): reload what the row shows.
+function isConflict(requestError) {
+  return requestError?.status === 409 || requestError?.status === 400
+}
+
+// The server's validator answers { errors: [{ field, message }] }: one message per field.
+function fieldErrorsFrom(requestError) {
+  const list = requestError?.data?.errors
+  if (!Array.isArray(list)) return {}
+  return list.reduce((map, item) => {
+    if (item?.field && !map[item.field]) map[item.field] = item.message
+    return map
+  }, {})
+}
+
+// "10:00 AM" on "2026-11-20" is in the past (local time).
+function hasStarted(appointment) {
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(appointment.time || '')
+  if (!appointment.date || !match) return false
+  let hours = Number(match[1]) % 12
+  if (match[3].toUpperCase() === 'PM') hours += 12
+  const [year, month, day] = appointment.date.split('-').map(Number)
+  return new Date(year, month - 1, day, hours, Number(match[2])) <= new Date()
+}
+
+function validateDoctor(form) {
+  const errors = {}
+  const experience = Number(form.experience)
+  const fee = Number(form.fee)
+  const rating = Number(form.rating)
+
+  if (form.name.trim().length < 2) errors.name = 'Doctor name needs at least 2 characters.'
+  if (form.specialty.trim().length < 2) errors.specialty = 'Specialty needs at least 2 characters.'
+  if (form.experience !== '' && (!Number.isInteger(experience) || experience < 0 || experience > 70)) {
+    errors.experience = 'Experience must be a whole number from 0 to 70.'
+  }
+  if (form.fee === '') errors.fee = 'Enter the consultation fee.'
+  else if (!Number.isFinite(fee) || fee < 0) errors.fee = 'The fee must be 0 or more.'
+  if (form.rating !== '' && (!Number.isFinite(rating) || rating < 0 || rating > 5)) {
+    errors.rating = 'Rating must be between 0 and 5.'
+  }
+
+  return errors
 }
 
 const TABS = [
@@ -91,6 +145,9 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
   const [editingDoctor, setEditingDoctor] = useState(null)
   const [savingDoctor, setSavingDoctor] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [doctorErrors, setDoctorErrors] = useState({})
+
+  const [confirm, confirmDialog] = useConfirm()
 
   // Keep the latest onLogout without making the data loaders depend on its identity.
   const onLogoutRef = useRef(onLogout)
@@ -101,7 +158,7 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
 
   const handleRequestError = useCallback((requestError, fallback) => {
     if (isAuthError(requestError)) {
-      showToast('Admin session expired. Please log in again.', 'error')
+      // App shows the one "session expired" toast and opens staff sign in.
       onLogoutRef.current(true)
       return
     }
@@ -137,7 +194,6 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
         await Promise.all([loadAppointments(), loadDoctors(), loadPatients()])
       } catch (requestError) {
         if (isAuthError(requestError)) {
-          showToast('Admin session expired. Please log in again.', 'error')
           onLogoutRef.current(true)
           return
         }
@@ -161,11 +217,22 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
 
   async function updateStatus(appointment, status) {
     const prompts = {
-      Completed: 'Mark this appointment as completed?',
-      Cancelled: 'Cancel this appointment? The patient will be notified.',
+      Completed: {
+        title: 'Mark this appointment as completed?',
+        description: `${appointment.patientName} with ${appointment.doctorName}, ${formatDate(appointment.date)} at ${appointment.time}.`,
+        confirmLabel: 'Mark completed',
+        cancelLabel: 'Not yet',
+      },
+      Cancelled: {
+        title: 'Cancel this appointment?',
+        description: `${appointment.patientName} with ${appointment.doctorName}, ${formatDate(appointment.date)} at ${appointment.time}. The patient will be notified.`,
+        confirmLabel: 'Cancel appointment',
+        cancelLabel: 'Keep it',
+        tone: 'danger',
+      },
     }
 
-    if (prompts[status] && !window.confirm(prompts[status])) return
+    if (prompts[status] && !(await confirm(prompts[status]))) return
 
     setUpdatingId(appointment.id)
 
@@ -183,6 +250,10 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
       await loadAppointments()
     } catch (requestError) {
       handleRequestError(requestError, 'Could not update the appointment.')
+
+      if (isConflict(requestError)) {
+        loadAppointments().catch(() => {})
+      }
     } finally {
       setUpdatingId(null)
     }
@@ -197,11 +268,16 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
       ...previous,
       [name]: type === 'checkbox' ? checked : value,
     }))
+
+    setDoctorErrors(previous =>
+      previous[name] ? { ...previous, [name]: undefined } : previous
+    )
   }
 
   function resetDoctorForm() {
     setDoctorForm(EMPTY_DOCTOR_FORM)
     setEditingDoctor(null)
+    setDoctorErrors({})
   }
 
   function startEditDoctor(doctor) {
@@ -224,14 +300,16 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
   async function handleDoctorSubmit(event) {
     event.preventDefault()
 
-    if (
-      doctorForm.name.trim().length < 2 ||
-      doctorForm.specialty.trim().length < 2 ||
-      doctorForm.fee === ''
-    ) {
-      showToast('Please enter the doctor name, specialty and fee.', 'error')
+    const errors = validateDoctor(doctorForm)
+
+    if (Object.keys(errors).length > 0) {
+      setDoctorErrors(errors)
+      const first = DOCTOR_FIELD_ORDER.find(key => errors[key])
+      document.getElementById(`doctor-${first}`)?.focus()
       return
     }
+
+    setDoctorErrors({})
 
     const payload = {
       name: doctorForm.name.trim(),
@@ -260,28 +338,75 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
       resetDoctorForm()
       await Promise.all([loadDoctors(), loadAppointments()])
     } catch (requestError) {
+      const fieldErrors = fieldErrorsFrom(requestError)
+
+      if (Object.keys(fieldErrors).length > 0) {
+        setDoctorErrors(fieldErrors)
+        const first = DOCTOR_FIELD_ORDER.find(key => fieldErrors[key])
+        if (first) document.getElementById(`doctor-${first}`)?.focus()
+      }
+
       handleRequestError(requestError, 'Could not save the doctor.')
+
+      if (isConflict(requestError)) {
+        Promise.all([loadDoctors(), loadAppointments()]).catch(() => {})
+      }
     } finally {
       setSavingDoctor(false)
     }
   }
 
   async function deleteDoctor(doctor) {
-    if (!window.confirm(`Delete ${doctor.name}? This cannot be undone.`)) return
+    const upcoming = appointments.filter(
+      item =>
+        item.doctorId === String(doctor.id) &&
+        (item.status === 'Pending' || item.status === 'Confirmed')
+    ).length
 
-    setDeletingId(doctor.id)
+    // The server refuses to delete a doctor with open appointments: say so up front.
+    if (upcoming > 0) {
+      await confirm({
+        title: `${doctor.name} still has ${upcoming} open ${upcoming === 1 ? 'appointment' : 'appointments'}`,
+        description: `Complete or cancel ${upcoming === 1 ? 'it' : 'them'} on the Appointments tab first, then the doctor can be deleted.`,
+        confirmLabel: null,
+        cancelLabel: 'Close',
+      })
+      return
+    }
+
+    const deleted = await confirm({
+      title: `Delete ${doctor.name}?`,
+      description: 'The doctor is removed from the website straight away. This cannot be undone.',
+      confirmLabel: 'Delete doctor',
+      cancelLabel: 'Keep doctor',
+      tone: 'danger',
+      action: async () => {
+        setDeletingId(doctor.id)
+
+        try {
+          await adminRequest(`/api/doctors/${doctor.id}`, { method: 'DELETE' })
+        } catch (requestError) {
+          if (isAuthError(requestError)) handleRequestError(requestError)
+          if (isConflict(requestError)) {
+            Promise.all([loadDoctors(), loadAppointments()]).catch(() => {})
+          }
+          throw requestError
+        } finally {
+          setDeletingId(null)
+        }
+      },
+    })
+
+    if (!deleted) return
+
+    showToast(`${doctor.name} removed.`, 'success')
+
+    if (editingDoctor && editingDoctor.id === doctor.id) resetDoctorForm()
 
     try {
-      await adminRequest(`/api/doctors/${doctor.id}`, { method: 'DELETE' })
-      showToast(`${doctor.name} removed.`, 'success')
-
-      if (editingDoctor && editingDoctor.id === doctor.id) resetDoctorForm()
-
       await loadDoctors()
     } catch (requestError) {
-      handleRequestError(requestError, 'Could not delete the doctor.')
-    } finally {
-      setDeletingId(null)
+      handleRequestError(requestError, 'Could not reload the doctors.')
     }
   }
 
@@ -290,6 +415,17 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
   const counts = APPOINTMENT_STATUSES.reduce((accumulator, status) => {
     accumulator[status] = appointments.filter(item => item.status === status).length
     return accumulator
+  }, {})
+
+  // Counts and empty states only mean something once the data arrived.
+  const ready = !loading && !error
+
+  const todayKey = todayString()
+  const lastVisitByEmail = appointments.reduce((map, item) => {
+    if (item.status === 'Cancelled' || !item.date || item.date > todayKey) return map
+    const key = item.userEmail
+    if (!map[key] || item.date > map[key]) map[key] = item.date
+    return map
   }, {})
 
   const searchTerm = search.trim().toLowerCase()
@@ -323,10 +459,18 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
     window.scrollTo({ top: 0, behavior: smoothOrInstant() })
   }
 
-  const tabCounts = {
-    appointments: counts.Pending,
-    doctors: doctors.length,
-    patients: patients.length,
+  const tabCounts = ready
+    ? {
+        appointments: counts.Pending,
+        doctors: doctors.length,
+        patients: patients.length,
+      }
+    : {}
+
+  const tabCountLabels = {
+    appointments: count => `${count} pending`,
+    doctors: count => `${count} doctors`,
+    patients: count => `${count} patients`,
   }
 
   // ---------- render helpers ----------
@@ -351,7 +495,8 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
           </button>
         )}
 
-        {appointment.status === 'Confirmed' && (
+        {/* Only a visit whose time has passed can be completed */}
+        {appointment.status === 'Confirmed' && hasStarted(appointment) && (
           <button
             type="button"
             className="btn btn--secondary btn--sm"
@@ -436,11 +581,11 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
 
         <button
           type="button"
-          className="link dash-textbtn"
+          className="btn btn--secondary btn--sm"
           onClick={() => onLogout(false)}
         >
           <LogOut size={16} aria-hidden="true" />
-          Sign out
+          <span className="appbar__hide-sm">Sign out</span>
         </button>
       </AppBar>
 
@@ -506,7 +651,15 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
             >
               {label}
               {tabCounts[key] > 0 && (
-                <span className="dash-tab-count">{tabCounts[key]}</span>
+                <span
+                  className="dash-tab-count"
+                  aria-label={tabCountLabels[key](tabCounts[key])}
+                  title={tabCountLabels[key](tabCounts[key])}
+                >
+                  {key === 'appointments'
+                    ? `${tabCounts[key]} pending`
+                    : tabCounts[key]}
+                </span>
               )}
             </button>
           ))}
@@ -532,11 +685,13 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                         <span className="sr-only">Loading</span>
                         <span className="skel skel--figure" aria-hidden="true" />
                       </>
+                    ) : error ? (
+                      <span aria-label="Not available">—</span>
                     ) : (
                       value
                     )}
                   </span>
-                  <span className="dash-stat__hint">Open</span>
+                  <span className="dash-stat__hint">View</span>
                 </button>
               ))}
             </div>
@@ -559,6 +714,8 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
 
               {loading ? (
                 <LoadingRows label="Loading appointments…" />
+              ) : error ? (
+                <p className="dash-note">Not available until the data loads. Use Try again above.</p>
               ) : appointments.length === 0 ? (
                 <div className="dash-empty">
                   <CalendarX2 size={20} className="dash-empty__icon" aria-hidden="true" />
@@ -579,7 +736,9 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
               <div>
                 <h2>Manage appointments</h2>
                 <p>
-                  Showing {filteredAppointments.length} of {appointments.length}
+                  {ready
+                    ? `Showing ${filteredAppointments.length} of ${appointments.length}`
+                    : 'Showing —'}
                 </p>
               </div>
             </div>
@@ -599,7 +758,7 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     onClick={() => setStatusFilter(filter)}
                   >
                     {filter}
-                    {filter !== 'All' ? ` (${counts[filter]})` : ''}
+                    {filter !== 'All' ? ` (${ready ? counts[filter] : '—'})` : ''}
                   </button>
                 ))}
               </TabRail>
@@ -618,6 +777,8 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
 
             {loading ? (
               <LoadingRows label="Loading appointments…" />
+            ) : error ? (
+              <p className="dash-note">Not available until the data loads. Use Try again above.</p>
             ) : filteredAppointments.length === 0 ? (
               <div className="dash-empty">
                 <CalendarX2 size={20} className="dash-empty__icon" aria-hidden="true" />
@@ -641,35 +802,47 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                 </div>
               </div>
 
-              <form className="form dash-doctor-form" onSubmit={handleDoctorSubmit}>
+              <form className="form dash-doctor-form" onSubmit={handleDoctorSubmit} noValidate>
                 <label className="field" htmlFor="doctor-name">
                   Doctor name
                   <input
                     id="doctor-name"
+                    aria-invalid={Boolean(doctorErrors.name)}
+                    aria-describedby={doctorErrors.name ? 'doctor-name-error' : undefined}
                     name="name"
                     value={doctorForm.name}
                     onChange={handleDoctorChange}
                     placeholder="Dr. Jane Doe"
                     required
                   />
+                  {doctorErrors.name && (
+                    <span className="field-error" id="doctor-name-error">{doctorErrors.name}</span>
+                  )}
                 </label>
 
                 <label className="field" htmlFor="doctor-specialty">
                   Specialty
                   <input
                     id="doctor-specialty"
+                    aria-invalid={Boolean(doctorErrors.specialty)}
+                    aria-describedby={doctorErrors.specialty ? 'doctor-specialty-error' : undefined}
                     name="specialty"
                     value={doctorForm.specialty}
                     onChange={handleDoctorChange}
                     placeholder="Cardiologist"
                     required
                   />
+                  {doctorErrors.specialty && (
+                    <span className="field-error" id="doctor-specialty-error">{doctorErrors.specialty}</span>
+                  )}
                 </label>
 
                 <label className="field field--third" htmlFor="doctor-experience">
                   Experience (years)
                   <input
                     id="doctor-experience"
+                    aria-invalid={Boolean(doctorErrors.experience)}
+                    aria-describedby={doctorErrors.experience ? 'doctor-experience-error' : undefined}
                     name="experience"
                     type="number"
                     min="0"
@@ -678,12 +851,17 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     onChange={handleDoctorChange}
                     placeholder="10"
                   />
+                  {doctorErrors.experience && (
+                    <span className="field-error" id="doctor-experience-error">{doctorErrors.experience}</span>
+                  )}
                 </label>
 
                 <label className="field field--third" htmlFor="doctor-fee">
                   Consultation fee (₹)
                   <input
                     id="doctor-fee"
+                    aria-invalid={Boolean(doctorErrors.fee)}
+                    aria-describedby={doctorErrors.fee ? 'doctor-fee-error' : undefined}
                     name="fee"
                     type="number"
                     min="0"
@@ -693,12 +871,17 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     placeholder="800"
                     required
                   />
+                  {doctorErrors.fee && (
+                    <span className="field-error" id="doctor-fee-error">{doctorErrors.fee}</span>
+                  )}
                 </label>
 
                 <label className="field field--third" htmlFor="doctor-rating">
                   Rating (0 to 5)
                   <input
                     id="doctor-rating"
+                    aria-invalid={Boolean(doctorErrors.rating)}
+                    aria-describedby={doctorErrors.rating ? 'doctor-rating-error' : undefined}
                     name="rating"
                     type="number"
                     min="0"
@@ -708,6 +891,9 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     onChange={handleDoctorChange}
                     placeholder="4.8"
                   />
+                  {doctorErrors.rating && (
+                    <span className="field-error" id="doctor-rating-error">{doctorErrors.rating}</span>
+                  )}
                 </label>
 
                 <label className="field field--full" htmlFor="doctor-bio">
@@ -762,12 +948,14 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
               <div className="dash-panel__head">
                 <div>
                   <h2>Doctor list</h2>
-                  <p>{doctors.length} doctors on the team</p>
+                  <p>{ready ? `${doctors.length} doctors on the team` : 'Doctors on the team: —'}</p>
                 </div>
               </div>
 
               {loading ? (
                 <LoadingRows label="Loading doctors…" />
+              ) : error ? (
+                <p className="dash-note">Not available until the data loads. Use Try again above.</p>
               ) : doctors.length === 0 ? (
                 <div className="dash-empty">
                   <Stethoscope size={20} className="dash-empty__icon" aria-hidden="true" />
@@ -849,12 +1037,14 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
             <div className="dash-panel__head">
               <div>
                 <h2>Registered patients</h2>
-                <p>{patients.length} patients have signed up</p>
+                <p>{ready ? `${patients.length} patients have signed up` : 'Patients signed up: —'}</p>
               </div>
             </div>
 
             {loading ? (
               <LoadingRows label="Loading patients…" />
+            ) : error ? (
+              <p className="dash-note">Not available until the data loads. Use Try again above.</p>
             ) : patients.length === 0 ? (
               <div className="dash-empty">
                 <Users size={20} className="dash-empty__icon" aria-hidden="true" />
@@ -871,7 +1061,7 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                       <th>Age / gender</th>
                       <th>Joined</th>
                       <th>Appointments</th>
-                      <th>Last appointment</th>
+                      <th>Last visit</th>
                     </tr>
                   </thead>
 
@@ -887,11 +1077,11 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                           {patient.age ?? <span className="muted">-</span>}
                           {patient.gender ? ` / ${patient.gender}` : ''}
                         </td>
-                        <td data-label="Joined" className="dash-num">{formatDateTime(patient.joinedAt)}</td>
+                        <td data-label="Joined" className="dash-num">{formatStamp(patient.joinedAt)}</td>
                         <td data-label="Appointments" className="dash-num">{patient.appointmentCount}</td>
-                        <td data-label="Last appointment" className="dash-num">
-                          {patient.lastAppointmentDate
-                            ? formatDate(patient.lastAppointmentDate)
+                        <td data-label="Last visit" className="dash-num">
+                          {lastVisitByEmail[String(patient.email || '').toLowerCase()]
+                            ? formatDate(lastVisitByEmail[String(patient.email || '').toLowerCase()])
                             : <span className="muted">-</span>}
                         </td>
                       </tr>
@@ -904,6 +1094,8 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
         )}
         </div>
       </main>
+
+      {confirmDialog}
     </div>
   )
 }

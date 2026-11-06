@@ -66,8 +66,9 @@ function appointmentListFrom(data) {
   return appointmentList.map(normalizeAppointment);
 }
 
+// A new screen starts at its top at once (the CSS smooth scroll is for in-page jumps only).
 function scrollTop() {
-  window.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 export default function App() {
@@ -338,7 +339,8 @@ function Screens() {
     clearSession("admin");
     setAdminUser(null);
 
-    setPage(expired ? "home" : "admin-login");
+    // Expired or not, the next step is signing in again.
+    setPage("admin-login");
 
     if (expired) {
       showToast("Your admin session has expired. Please sign in again.", "error");
@@ -542,6 +544,11 @@ function Screens() {
       }
 
       if (error.status === 409) {
+        // The slot went to someone else: drop it from the selection and say what to do.
+        setAppointmentTime("");
+        setBookingError(
+          "This doctor already has an appointment at this time. Pick another time."
+        );
         setSlotState((current) =>
           current.key !== slotKey || current.times.includes(appointmentTime)
             ? current
@@ -651,8 +658,8 @@ function Screens() {
             <p className="eyebrow-label">Step 2 of 3</p>
             <h1>Choose a date and time</h1>
             <p>
-              Times another patient already holds for this doctor are crossed
-              out. Your request stays pending until the clinic confirms it.
+              Times another patient already holds for this doctor are marked
+              Booked. Your request stays pending until the clinic confirms it.
             </p>
           </div>
 
@@ -743,7 +750,12 @@ function Screens() {
                             setBookingError("");
                           }}
                         >
-                          {value}
+                          <span className="slot__time">{value}</span>
+                          {unavailable && (
+                            <span className="slot__note" aria-hidden="true">
+                              Booked
+                            </span>
+                          )}
                         </button>
                       );
                     })}

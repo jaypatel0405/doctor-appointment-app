@@ -4,15 +4,17 @@
         close type, footer dark, rhythm surface-pairs, buttons pill (the centred hero's look), mark dots,
         palette green-mat-chocolate, type Host Grotesk, lit ground sky
   effect: grain-gradient behind the hero window
-  moments: pinned-chapters in #how
+  moment: pinned-chapters in #how
   screens: hero 1, doctors 1 (the live app frame), how 2 (the moment), dashboard 1 on the surface
            ground, faq 1, footer.closing 1
 */
 import { memo, useMemo, useRef, useState } from "react";
-import { Award, IndianRupee, Search, Star, X } from "lucide-react";
+import { Award, IndianRupee, Search, Star, UserRound, X } from "lucide-react";
 
 import { TIME_SLOTS } from "../api";
 import { initials, stepsMarkup } from "./kitMarkup";
+import useScrollMotion from "./useScrollMotion";
+import useSmoothScroll, { scrollToTarget } from "./useSmoothScroll";
 import useTasteKit from "./useTasteKit";
 import "./home.css";
 
@@ -43,7 +45,7 @@ function feeRange(doctors) {
 }
 
 function scrollToId(id) {
-  document.getElementById(id)?.scrollIntoView({ block: "start" });
+  scrollToTarget(document.getElementById(id));
 }
 
 function Logo() {
@@ -77,7 +79,7 @@ function HeroWindow({ doctors }) {
           : "MediBook+ booking a doctor's appointment"
       }
     >
-      <div className="ly-piece ui ui-booking bk-win" aria-hidden="true">
+      <div className="ly-piece ui ui-booking bk-win" data-visual aria-hidden="true">
         <div className="bk-win__bar">
           <span className="ui-dots">
             <i />
@@ -374,11 +376,17 @@ function DoctorFinder({ doctors, loading, onBook }) {
 
         {!loading && !results.length && (
           <div className="fd-empty">
-            <p>No doctor matches “{query || specialty}”.</p>
-            <button type="button" className="link" onClick={reset}>
-              Show all doctors
-              {ARROW}
-            </button>
+            {doctors.length ? (
+              <>
+                <p>No doctor matches “{query || specialty}”.</p>
+                <button type="button" className="link" onClick={reset}>
+                  Show all doctors
+                  {ARROW}
+                </button>
+              </>
+            ) : (
+              <p>The doctor list could not be loaded. Please try again in a moment.</p>
+            )}
           </div>
         )}
       </div>
@@ -545,7 +553,21 @@ export default function HomePage({
     setStepsHtml(stepsMarkup(doctors, TIME_SLOTS));
   }
 
-  useTasteKit(mainRef, !loadingDoctors && (stepsHtml !== null || !doctors.length));
+  const kitReady = !loadingDoctors && (stepsHtml !== null || !doctors.length);
+
+  useTasteKit(mainRef, kitReady);
+  useSmoothScroll();
+  useScrollMotion(mainRef, kitReady);
+
+  // an action in the phone sheet closes the sheet first (system.js closes it for links only), so the
+  // page it leads to, or the signed-out page, is never left under a locked sheet
+  function sheet(action) {
+    return (event) => {
+      const nav = event.currentTarget.closest(".nav");
+      if (nav?.classList.contains("is-open")) nav.querySelector(".nav__toggle")?.click();
+      action?.(event);
+    };
+  }
 
   function go(id) {
     return (event) => {
@@ -562,7 +584,7 @@ export default function HomePage({
             <Logo />
           </a>
 
-          <nav className="nav__links" aria-label="Main">
+          <nav className="nav__links" aria-label="Main" data-lenis-prevent>
             <div className="nav__item">
               <a className="nav__link" href="#doctors">Doctors</a>
             </div>
@@ -570,7 +592,7 @@ export default function HomePage({
               <a className="nav__link" href="#how">Booking</a>
             </div>
             <div className="nav__item">
-              <a className="nav__link" href="#dashboard">Dashboard</a>
+              <a className="nav__link" href="#dashboard">Visits</a>
             </div>
             <div className="nav__item">
               <a className="nav__link" href="#faq">Questions</a>
@@ -580,15 +602,23 @@ export default function HomePage({
           <div className="nav__actions">
             {user ? (
               <>
-                <button type="button" className="nav__link" onClick={onDashboard}>
-                  {user.name ? user.name.split(" ")[0] : "My account"}
+                <button
+                  type="button"
+                  className="nav__account"
+                  onClick={sheet(onDashboard)}
+                  aria-label={`My appointments${user.name ? `, signed in as ${user.name}` : ""}`}
+                >
+                  <span className="ui-avatar nav__avatar" data-tone="3" aria-hidden="true">
+                    {user.name ? initials(user.name) : <UserRound {...ICON} />}
+                  </span>
+                  <span className="nav__account-label">My appointments</span>
                 </button>
-                <button type="button" className="nav__link" onClick={onLogout}>
+                <button type="button" className="nav__link" onClick={sheet(onLogout)}>
                   Sign out
                 </button>
               </>
             ) : (
-              <button type="button" className="nav__link" onClick={onLogin}>
+              <button type="button" className="nav__link" onClick={sheet(onLogin)}>
                 Sign in
               </button>
             )}
@@ -639,7 +669,7 @@ export default function HomePage({
 
                 <p className="hero__lead">
                   Compare specialists by fee and experience, book a free
-                  slot and track it until the clinic confirms.
+                  slot and see the clinic confirm it in your account.
                 </p>
 
                 <div className="btn-row">
@@ -761,7 +791,7 @@ export default function HomePage({
 
               <div className="faq span-6 start-7">
                 <div className="faq__item">
-                  <h3>How much does a consultation cost?</h3>
+                  <h3>How much does a visit to a doctor cost?</h3>
                   <p>
                     Each doctor sets their own fee
                     {range

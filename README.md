@@ -28,7 +28,12 @@ Admins manage doctors, patients and appointment requests from a dashboard.
 ### Backend
 - MongoDB models: `User`, `Doctor`, `Appointment`, `Notification`
 - Starter doctors are seeded automatically on first run
-- Double-booking protection (same doctor, date and time)
+- Double-booking protection (same doctor, date and time), race-safe through a
+  partial unique index
+- Security: Helmet headers, CORS allow list, rate limits on login/registration/
+  booking, strict input validation, pinned-algorithm JWTs, bcrypt password hashing
+- Fast `503` (not hanging requests) when the database is unreachable; JSON logs
+- Automated API tests against an in-memory MongoDB (`npm --prefix server test`)
 - Optional email notifications through SMTP (disabled unless configured)
 
 ---
@@ -73,11 +78,15 @@ Fill in `server/.env`:
 ```
 PORT=5000
 MONGO_URI=mongodb+srv://<user>:<password>@<cluster>/medibook?retryWrites=true&w=majority
-JWT_SECRET=some-long-random-string
+JWT_SECRET=<at least 32 random characters>
 ```
 
-Create the admin account. `ADMIN_PASSWORD` is required (min 8 chars); `ADMIN_EMAIL`
-(default `admin@medibook.com`) and `ADMIN_NAME` are optional:
+All supported variables are listed in `server/.env.example`. Generate a secret with
+`node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`.
+
+Create the admin account. `ADMIN_PASSWORD` is required (12-128 chars); `ADMIN_EMAIL`
+(default `admin@medibook.com`) and `ADMIN_NAME` are optional. Re-running resets the
+admin's password; it refuses to turn an existing patient account into an admin:
 
 ```bash
 npm run seed:admin
@@ -89,12 +98,26 @@ Start the API:
 npm start          # or: npm run dev   (restarts on file changes)
 ```
 
-The server listens on http://localhost:5000 and prints every available route.
-On start it inserts six starter doctors if the collection is empty (idempotent;
-also available as `npm run seed:doctors`).
+The server listens on http://localhost:5000 (check http://localhost:5000/api/health).
+Once connected it inserts six starter doctors if the collection is empty
+(idempotent; also available as `npm run seed:doctors`).
 
-> **MongoDB Atlas:** if the server fails with an "IP not whitelisted" error, add
-> your current IP address under *Network Access* in the Atlas dashboard.
+Create the database indexes once per database (idempotent, only adds indexes; it
+also lists any existing double bookings that block the unique slot index):
+
+```bash
+npm run db:indexes
+```
+
+Run the API tests (in-memory MongoDB, downloaded on first run; never touches Atlas):
+
+```bash
+npm test
+```
+
+> **MongoDB Atlas:** if the database is unreachable (e.g. "IP not whitelisted"), the
+> server keeps running, answers `503` and retries the connection in the background.
+> Add your current IP address under *Network Access* in the Atlas dashboard.
 
 ### 2. Frontend
 
@@ -152,6 +175,17 @@ npm run preview    # serves the build locally
 Every response has the shape `{ success: true | false, message?, ...data }`.
 Protected routes expect an `Authorization: Bearer <token>` header.
 
+Errors: `{ success: false, message, errors? }` where `errors` (validation failures
+only) is `[{ field, message }]` and `message` is the first error. Status codes:
+`400` invalid input, `401` missing/invalid/expired token or wrong credentials,
+`403` signed in but not allowed (e.g. patient on an admin route), `404` not found,
+`409` conflict (slot taken, email registered, record changed meanwhile), `413` body
+over 20 kB, `429` rate limited, `503` database unavailable (with `Retry-After`),
+`500` unexpected (generic message plus a `requestId` to find the log line).
+
+`GET /api/health` returns `200 {"database":"connected"}` or `503` when the
+database is unreachable.
+
 Appointment time slots: 10:00 AM, 11:00 AM, 12:00 PM, 2:00 PM, 3:00 PM, 4:00 PM.
 
 ---
@@ -182,7 +216,10 @@ Leave them blank to disable email (in-app notifications still work).
 | root     | `npm run lint`       | ESLint                             |
 | server   | `npm start`          | Start the API                      |
 | server   | `npm run dev`        | Start the API with auto-restart    |
+| server   | `npm test`           | API tests (in-memory MongoDB)      |
 | server   | `npm run seed:admin` | Create / reset the admin account   |
+| server   | `npm run seed:doctors` | Insert starter doctors if none   |
+| server   | `npm run db:indexes` | Create MongoDB indexes (idempotent)|
 
 ---
 
@@ -198,8 +235,13 @@ One Vercel project serves both parts:
 - **Database**: your existing MongoDB Atlas cluster. The connection is cached across
   warm invocations (`server/db.js`).
 
-`vercel.json` installs root deps and `server/` deps (`npm install --prefix server`),
-so the function can use the server's own `package.json`.
+`vercel.json` installs root deps and the server's production deps from its lockfile
+(`npm ci --prefix server --omit=dev`), so the function uses the server's own
+`package.json`. Test files and dev dependencies are not deployed.
+
+**Region:** the function runs in Vercel's default region (`iad1`, Washington D.C.)
+unless changed under *Project -> Settings -> Functions*. For the lowest latency pick
+the region closest to your Atlas cluster (e.g. `bom1` for an Atlas cluster in Mumbai).
 
 ### 1. Prepare MongoDB Atlas
 
@@ -221,12 +263,25 @@ so the function can use the server's own `package.json`.
 | Variable       | Required | Notes |
 | -------------- | -------- | ----- |
 | `MONGO_URI`    | yes      | Atlas connection string |
-| `JWT_SECRET`   | yes      | long random string (e.g. `openssl rand -hex 32`) |
-| `CORS_ORIGINS` | no       | comma list of extra allowed origins, e.g. `https://medibook.vercel.app,https://www.example.com`. Same-origin requests and the Vercel deployment URL are allowed automatically. |
+| `JWT_SECRET`   | yes      | at least 32 random characters (e.g. `openssl rand -hex 32`); a shorter value logs a warning. Changing it signs everyone out. |
+| `CORS_ORIGINS` | recommended | comma list of allowed origins, e.g. `https://medibook.jay-patel.dev`. Same-origin requests and the Vercel deployment URLs are allowed automatically. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | no | email notifications; disabled when unset |
+| `JWT_EXPIRES_IN` | no | token lifetime, default `1d` |
+| `APP_TIMEZONE` | no | IANA zone that defines "today" for booking dates, default `Asia/Kolkata` (Vercel runs in UTC) |
+| `BCRYPT_ROUNDS` | no | password hashing cost for new hashes, default `12` |
+| `LOG_LEVEL` | no | `debug`, `info` (default), `warn`, `error`, `silent` |
+| `RATE_LIMIT_LOGIN_MAX`, `RATE_LIMIT_REGISTER_MAX`, `RATE_LIMIT_BOOKING_MAX`, `RATE_LIMIT_API_MAX` | no | defaults: 10 failed logins / 15 min per IP, 10 sign-ups / hour per IP, 20 bookings or reschedules / 15 min per user, 300 requests / min per IP |
+
+`ADMIN_*` variables are only used by `npm run seed:admin` on your machine; they are
+not needed on Vercel.
 
 Do **not** set `VITE_API_URL` - production builds call the API on the same domain.
-If `MONGO_URI`/`JWT_SECRET` are missing, the API answers `500` with a JSON message.
+If `MONGO_URI`/`JWT_SECRET` are missing, the API answers `503` and logs which
+variable is missing (Vercel -> Logs).
+
+Rate limits are counted in memory per function instance, so under load the
+effective limit can be a few times higher. That is fine as abuse protection; use a
+shared store (e.g. Upstash Redis) if exact global limits are ever needed.
 
 ### 4. One-time seeds (run from your machine against Atlas)
 
@@ -235,22 +290,30 @@ The function never seeds. Run once, with `server/.env` pointing at the Atlas dat
 
 ```bash
 cd server
+npm run db:indexes     # creates indexes, incl. the unique slot index (safe to re-run)
 npm run seed:doctors   # inserts starter doctors only if none exist
 npm run seed:admin     # creates/updates the admin account (ADMIN_PASSWORD required)
 ```
+
+The app does not create indexes on its own (`MONGO_AUTO_INDEX` is off), so run
+`db:indexes` once after deploying this version. If it reports existing double
+bookings, cancel the extras and run it again.
 
 Your machine's IP must be allowed in Atlas (it is, with `0.0.0.0/0`).
 
 ### 5. Check it
 
 - `https://<your-app>.vercel.app/api/health` -> `{"success":true,...,"database":"connected"}`
+  (`503` with `"database":"disconnected"` means Atlas is unreachable: check `MONGO_URI`
+  and Network Access)
 - `https://<your-app>.vercel.app/` -> the app
 
 ### Hobby plan limits
 
 - Non-commercial / personal use only; a commercial app needs the Pro plan.
-- Function duration is capped (this project sets `maxDuration: 10` seconds); slow SMTP
-  servers count against it because emails are sent inside the request.
+- Function duration is capped (this project sets `maxDuration: 15` seconds). Emails
+  are sent inside the request but bounded (the response waits at most ~4 s for SMTP),
+  and database outages fail with `503` after at most ~5 s.
 - Cold starts: the first request after idle time loads Express and opens a new MongoDB
   connection (typically 1-3 s). Warm requests reuse it.
 - Atlas free tier (M0) allows a limited number of connections; each warm function

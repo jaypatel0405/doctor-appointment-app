@@ -5,7 +5,22 @@
 /* ---------------------------------------------------------------- small shared pieces */
 .dash button.link { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; font-weight: 500; }
 /* a text action (sign out, mark read, close): the kit link without its arrow */
-.dash .dash-textbtn { font-size: var(--t-small); white-space: nowrap; }
+.dash button.dash-textbtn {
+  min-height: 44px; padding: 0 var(--s-2); margin-inline: calc(-1 * var(--s-2));
+  font-size: var(--t-small); white-space: nowrap; text-underline-offset: 4px;
+}
+/* the underline stays under the word, not at the bottom of the 44px box */
+/* the kit's link line (a rest hairline, the ink line drawing in on hover) moves from the 44px box
+   onto the words, so it sits under the text */
+html .screen.dash button.dash-textbtn { text-decoration: none; background-image: none; }
+.dash .dash-textbtn > span {
+  padding-bottom: 2px;
+  background-image: linear-gradient(currentColor, currentColor), linear-gradient(var(--line-strong), var(--line-strong));
+  background-repeat: no-repeat; background-position: 0 100%, 0 100%; background-size: 0% 1px, 100% 1px;
+  transition: background-size var(--ui-out) var(--ui-ease);
+}
+.dash .dash-textbtn:is(:hover, :focus-visible) > span { background-size: 100% 1px, 100% 1px; transition-duration: var(--ui-in); }
+@media (prefers-reduced-motion: reduce) { .dash .dash-textbtn > span { transition: none; } }
 .dash .dash-textbtn::after { content: none; }
 
 /* a destructive action: the secondary button with a muted red word */
@@ -39,7 +54,9 @@
   display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s-3);
   margin-bottom: var(--s-6);
 }
+/* seven staff stats fit one row from 1200; below that four a row (the labels never cut) */
 .dash-stats:has(> :nth-child(6)) { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+@media (max-width: 1199px) { .dash-stats:has(> :nth-child(6)) { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .dash-stat {
   display: grid; gap: var(--s-1); justify-items: start; text-align: left; min-width: 0;
   padding: var(--s-4) var(--s-5); border: 1px solid var(--line); border-radius: var(--r-md);
@@ -62,14 +79,14 @@
   font: 500 clamp(28px, 1vw + 22px, 36px) / 1.1 var(--font-display); letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums; min-height: 1.1em;
 }
-.dash-stat__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dash-stat__label { overflow-wrap: anywhere; }
 .dash-stat__hint { font-size: var(--t-label); color: var(--muted); }
 
 /* ---------------------------------------------------------------- tabs (kit .tab inside a tablist) */
 .dash-tabs { margin-bottom: var(--s-6); }
 .dash .tab { display: inline-flex; align-items: center; }
 .dash-tab-count {
-  display: inline-grid; place-items: center; min-width: 22px; height: 20px; margin-left: var(--s-2); padding: 0 6px;
+  display: inline-grid; place-items: center; min-width: 22px; height: 20px; margin-left: var(--s-2); padding: 0 8px; white-space: nowrap;
   border-radius: 999px; background: color-mix(in oklab, var(--ink) 9%, transparent);
   font-size: var(--t-label); font-variant-numeric: tabular-nums; color: inherit;
 }

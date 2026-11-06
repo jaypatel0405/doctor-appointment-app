@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
+import { formatDate } from '../api'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
+import { collisionPadding, makeRoomBelow } from './position'
 import './ui.css'
 
 // "YYYY-MM-DD" <-> a local Date (no time-zone shift).
@@ -41,13 +43,18 @@ export default function DatePicker({
   ariaLabel,
 }) {
   const [open, setOpen] = useState(false)
+  const triggerRef = useRef(null)
   const selected = toDate(value)
   const minDate = toDate(min)
   const [month, setMonth] = useState(() => selected || minDate || new Date())
 
   function handleOpenChange(next) {
     // Each opening shows the chosen date's month (or the first allowed one).
-    if (next) setMonth(selected || minDate || new Date())
+    if (next) {
+      setMonth(selected || minDate || new Date())
+      // The calendar is about 360px tall: make room under the field first.
+      makeRoomBelow(triggerRef.current, 370)
+    }
     setOpen(next)
   }
 
@@ -55,6 +62,7 @@ export default function DatePicker({
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
         <button
+          ref={triggerRef}
           id={id}
           type="button"
           className="ui-control ui-date__trigger"
@@ -64,7 +72,7 @@ export default function DatePicker({
         >
           <CalendarDays size={18} className="ui-date__icon" aria-hidden="true" />
           <span className={value ? 'ui-date__value' : 'ui-date__value is-placeholder'}>
-            {selected ? format(selected, 'EEE, d MMM yyyy') : placeholder}
+            {selected ? formatDate(value) : placeholder}
           </span>
         </button>
       </Popover.Trigger>
@@ -75,7 +83,7 @@ export default function DatePicker({
           side="bottom"
           align="start"
           sideOffset={6}
-          collisionPadding={16}
+          collisionPadding={collisionPadding()}
           aria-label="Choose a date"
         >
           <DayPicker

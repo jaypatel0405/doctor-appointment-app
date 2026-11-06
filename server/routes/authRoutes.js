@@ -1,25 +1,14 @@
-
 const express = require("express");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
+const { validate, rules } = require("../middleware/validate");
+const { loginLimiter, registerLimiter } = require("../middleware/security");
+const { signToken, hashPassword, verifyPassword, upgradePasswordHash } = require("../utils/tokens");
+const { handle, isDuplicateKey } = require("../utils/errors");
 
 const router = express.Router();
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Generate JWT token
-const generateToken = (user) => {
-  return jwt.sign(
-    {
-      userId: user._id,
-      role: user.role,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "1d" }
-  );
-};
 
 // Shape of the user object sent to the browser.
 // Never includes the password.
@@ -33,115 +22,115 @@ const publicUser = (user) => ({
   gender: user.gender || "",
 });
 
+// ---------- validation schemas ----------
+
+const registerSchema = {
+  body: {
+    name: rules.string({
+      required: true,
+      min: 2,
+      max: 100,
+      requiredMessage: "Please provide name, email and password.",
+      message: "Please enter your full name.",
+      maxMessage: "Name must be at most 100 characters.",
+    }),
+    email: rules.string({
+      required: true,
+      lowercase: true,
+      max: 254,
+      pattern: EMAIL_PATTERN,
+      requiredMessage: "Please provide name, email and password.",
+      message: "Please enter a valid email address.",
+    }),
+    password: rules.string({
+      required: true,
+      trim: false,
+      min: 8,
+      max: 128,
+      requiredMessage: "Please provide name, email and password.",
+      minMessage: "Password must be at least 8 characters long.",
+      maxMessage: "Password must be at most 128 characters long.",
+      message: "Please provide a valid password.",
+    }),
+  },
+};
+
+const loginSchema = (requiredMessage) => ({
+  body: {
+    email: rules.string({ required: true, lowercase: true, max: 254, requiredMessage }),
+    // Generous max: bounds hashing work without rejecting older long passwords.
+    password: rules.string({ required: true, trim: false, max: 1024, requiredMessage }),
+  },
+});
+
 // ======================================
 // PATIENT REGISTRATION
 // POST /api/auth/register
 // ======================================
-router.post("/register", async (req, res) => {
-  try {
+router.post(
+  "/register",
+  registerLimiter,
+  validate(registerSchema),
+  handle("Registration failed.", async (req, res) => {
     const { name, email, password } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide name, email and password.",
-      });
-    }
-
-    const normalizedName = String(name).trim();
-    const normalizedEmail = String(email).trim().toLowerCase();
-
-    if (!EMAIL_PATTERN.test(normalizedEmail)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please enter a valid email address.",
-      });
-    }
-
-    if (normalizedName.length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: "Please enter your full name.",
-      });
-    }
-
-    if (String(password).length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: "Password must be at least 8 characters long.",
-      });
-    }
-
-    const existingUser = await User.findOne({
-      email: normalizedEmail,
-    });
-
-    if (existingUser) {
-      return res.status(409).json({
+    const alreadyRegistered = () =>
+      res.status(409).json({
         success: false,
         message: "Email is already registered.",
       });
+
+    if (await User.exists({ email })) return alreadyRegistered();
+
+    let user;
+
+    try {
+      user = await User.create({
+        name,
+        email,
+        password: await hashPassword(password),
+        role: "patient",
+      });
+    } catch (error) {
+      // Two simultaneous sign-ups with the same email: the unique index wins.
+      if (isDuplicateKey(error)) return alreadyRegistered();
+      throw error;
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await User.create({
-      name: normalizedName,
-      email: normalizedEmail,
-      password: hashedPassword,
-      role: "patient",
-    });
-
-    const token = generateToken(user);
 
     return res.status(201).json({
       success: true,
       message: "Registration successful.",
-      token,
+      token: signToken(user),
       user: publicUser(user),
     });
-  } catch (error) {
-    console.error("Registration error:", error);
-
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "Email is already registered.",
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Registration failed.",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // PATIENT LOGIN
 // POST /api/auth/login
 // ======================================
-router.post("/login", async (req, res) => {
-  try {
+router.post(
+  "/login",
+  loginLimiter,
+  validate(loginSchema("Please provide email and password.")),
+  handle("Login failed.", async (req, res) => {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide email and password.",
-      });
-    }
+    const user = await User.findOne({ email });
 
-    const user = await User.findOne({
-      email: String(email).trim().toLowerCase(),
-    });
+    // The password is always checked first (also for unknown emails, against a
+    // dummy hash) so responses and timing don't reveal which emails exist.
+    const isMatch = await verifyPassword(password, user ? user.password : null);
 
-    if (!user) {
+    if (!user || !isMatch) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password.",
       });
     }
+
+    await upgradePasswordHash(user, password);
 
     if (user.role === "admin") {
       return res.status(403).json({
@@ -150,105 +139,60 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
-
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password.",
-      });
-    }
-
-    const token = generateToken(user);
-
     return res.status(200).json({
       success: true,
       message: "Login successful.",
-      token,
+      token: signToken(user),
       user: publicUser(user),
     });
-  } catch (error) {
-    console.error("Login error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Login failed.",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // ADMIN LOGIN
 // POST /api/auth/admin-login
 // ======================================
-router.post("/admin-login", async (req, res) => {
-  try {
+router.post(
+  "/admin-login",
+  loginLimiter,
+  validate(loginSchema("Please provide admin email and password.")),
+  handle("Admin login failed.", async (req, res) => {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide admin email and password.",
-      });
-    }
+    const admin = await User.findOne({ email, role: "admin" });
+    const isMatch = await verifyPassword(password, admin ? admin.password : null);
 
-    const admin = await User.findOne({
-      email: String(email).trim().toLowerCase(),
-      role: "admin",
-    });
-
-    if (!admin) {
+    if (!admin || !isMatch) {
       return res.status(401).json({
         success: false,
         message: "Invalid admin email or password.",
       });
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      admin.password
-    );
+    await upgradePasswordHash(admin, password);
 
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid admin email or password.",
-      });
-    }
-
-    const token = generateToken(admin);
     const user = publicUser(admin);
 
     return res.status(200).json({
       success: true,
       message: "Admin login successful.",
-      token,
+      token: signToken(admin),
       user,
       admin: user,
     });
-  } catch (error) {
-    console.error("Admin login error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Admin login failed.",
-    });
-  }
-});
+  })
+);
 
 // ======================================
 // CURRENT USER
 // GET /api/auth/me
 // Restore session using saved token.
 // ======================================
-router.get("/me", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(
-      req.user.userId
-    ).select("-password");
+router.get(
+  "/me",
+  authMiddleware,
+  handle("Could not load user.", async (req, res) => {
+    const user = await User.findById(req.user.userId).select("-password");
 
     if (!user) {
       return res.status(404).json({
@@ -261,14 +205,7 @@ router.get("/me", authMiddleware, async (req, res) => {
       success: true,
       user: publicUser(user),
     });
-  } catch (error) {
-    console.error("Current user error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Could not load user.",
-    });
-  }
-});
+  })
+);
 
 module.exports = router;

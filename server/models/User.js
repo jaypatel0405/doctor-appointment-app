@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      maxlength: 100,
     },
 
     email: {
@@ -15,6 +16,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      maxlength: 254,
     },
 
     password: {
@@ -47,5 +49,8 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Admin patient list (role filter, newest first). Email is unique (above).
+userSchema.index({ role: 1, createdAt: -1 });
 
 module.exports = mongoose.model("User", userSchema);

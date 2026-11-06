@@ -6,7 +6,6 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
 
     appointment: {
@@ -42,5 +41,9 @@ const notificationSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Newest notifications for a user, and their unread count.
+notificationSchema.index({ user: 1, createdAt: -1 });
+notificationSchema.index({ user: 1, read: 1 });
 
 module.exports = mongoose.model("Notification", notificationSchema);

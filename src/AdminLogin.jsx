@@ -11,6 +11,7 @@ export default function AdminLogin({ onLogin, onBack }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event) {
@@ -19,15 +20,23 @@ export default function AdminLogin({ onLogin, onBack }) {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Validate email
+    // Both fields are checked at once; each message sits under its field.
+    const errors = {};
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setError("Please enter a valid admin email address.");
-      return;
+      errors.email = "Enter your staff email, like name@clinic.com.";
     }
 
-    // Validate password
     if (!password) {
-      setError("Please enter your admin password.");
+      errors.password = "Enter your password.";
+    }
+
+    setFieldErrors(errors);
+
+    if (errors.email || errors.password) {
+      document
+        .getElementById(errors.email ? "admin-email" : "admin-password")
+        ?.focus();
       return;
     }
 
@@ -104,6 +113,8 @@ export default function AdminLogin({ onLogin, onBack }) {
               Staff email
               <input
                 id="admin-email"
+                aria-invalid={Boolean(fieldErrors.email)}
+                aria-describedby={fieldErrors.email ? "admin-email-error" : undefined}
                 type="email"
                 placeholder="admin@medibook.com"
                 value={email}
@@ -113,6 +124,11 @@ export default function AdminLogin({ onLogin, onBack }) {
                 autoComplete="username"
                 required
               />
+              {fieldErrors.email && (
+                <span className="field-error" id="admin-email-error">
+                  {fieldErrors.email}
+                </span>
+              )}
             </label>
 
             <label className="field field--full" htmlFor="admin-password">
@@ -120,6 +136,8 @@ export default function AdminLogin({ onLogin, onBack }) {
               <span className="ui-affix ui-affix--trail">
                 <input
                   id="admin-password"
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? "admin-password-error" : undefined}
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter password"
                   value={password}
@@ -143,6 +161,11 @@ export default function AdminLogin({ onLogin, onBack }) {
                   )}
                 </button>
               </span>
+              {fieldErrors.password && (
+                <span className="field-error" id="admin-password-error">
+                  {fieldErrors.password}
+                </span>
+              )}
             </label>
 
 

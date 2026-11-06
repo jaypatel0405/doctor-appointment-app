@@ -8,7 +8,6 @@ const appointmentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
 
     patientName: {
@@ -31,7 +30,7 @@ const appointmentSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      index: true,
+      maxlength: 24,
     },
 
     doctorName: {
@@ -93,7 +92,6 @@ const appointmentSchema = new mongoose.Schema(
         "Completed",
       ],
       default: "Pending",
-      index: true,
     },
   },
   {
@@ -101,18 +99,38 @@ const appointmentSchema = new mongoose.Schema(
   }
 );
 
-// Improve appointment lookup and sorting.
-appointmentSchema.index({
-  patient: 1,
-  createdAt: -1,
-});
+// ---------- Indexes ----------
+// Created by `npm run db:indexes` (autoIndex is off; see db.js).
 
+// Patient's own list, newest first: GET /api/appointments
+appointmentSchema.index({ patient: 1, createdAt: -1 });
+
+// Admin list, newest first: GET /api/appointments/admin
+appointmentSchema.index({ createdAt: -1 });
+
+// Slot lookups: GET /api/appointments/booked and the booking conflict check.
 appointmentSchema.index({
   doctorId: 1,
   appointmentDate: 1,
   appointmentTime: 1,
   status: 1,
 });
+
+// Legacy records matched by doctor name in the same lookups.
+appointmentSchema.index({ doctorName: 1, appointmentDate: 1 });
+
+// Race-safe double-booking guard: at most one active (not cancelled)
+// appointment per doctor, date and time. Two simultaneous bookings for the
+// same slot cannot both be inserted; the loser gets a duplicate-key error
+// which the API reports as 409.
+appointmentSchema.index(
+  { doctorId: 1, appointmentDate: 1, appointmentTime: 1 },
+  {
+    name: "unique_active_slot",
+    unique: true,
+    partialFilterExpression: { status: { $in: ["Pending", "Confirmed", "Completed"] } },
+  }
+);
 
 module.exports = mongoose.model(
   "Appointment",

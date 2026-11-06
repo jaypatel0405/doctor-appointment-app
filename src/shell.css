@@ -33,7 +33,13 @@
   .appbar__hide-sm { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .appbar__right .btn--sm:has(.appbar__hide-sm) { width: 44px; padding: 0; }
   .appbar__right .btn--sm:has(.appbar__hide-sm) svg { margin: 0; }
+  .appbar__in { gap: var(--s-2); }
+  .appbar__logo { min-width: 0; }
 }
+
+/* in-page jumps (View details, a stat) glide; a new screen still opens at its top at once */
+html:has(.screen) { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html:has(.screen) { scroll-behavior: auto; } }
 
 /* the sticky bar never covers the top of a panel a button scrolled to */
 .screen [id], .screen .dash-panel { scroll-margin-top: calc(var(--nav) + var(--s-4)); }
@@ -58,6 +64,10 @@
 .field :is(input, select, textarea):focus { outline: 2px solid var(--action); outline-offset: 1px; }
 .field :is(input, select, textarea):disabled { opacity: 0.6; cursor: not-allowed; }
 .field-hint { font-size: var(--t-small); font-weight: 400; color: var(--muted); }
+/* a field's own error, under it (noValidate forms: no browser bubbles) */
+.field-error { display: block; font-size: var(--t-small); font-weight: 400; color: #8f2a1c; animation: ui-rise var(--ui-panel) var(--ui-ease); }
+.field :is(input, select, textarea)[aria-invalid="true"] { border-color: #b3402d; }
+.field :is(input, select, textarea)[aria-invalid="true"]:focus { outline-color: #b3402d; }
 .form-error {
   padding: var(--s-3) var(--s-4); border-radius: var(--r-sm);
   background: #f6e0dc; color: #8f2a1c; font-size: var(--t-small);
@@ -110,7 +120,8 @@
 
 .slot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
 .slot {
-  height: 44px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--bg);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  height: 44px; border-radius: var(--r-btn); border: 1px solid var(--line-strong); background: var(--bg);
   font: 500 var(--t-small) / 1 var(--font-text); font-variant-numeric: tabular-nums; color: var(--ink); cursor: pointer;
   transition: background-color var(--ui-out) var(--ui-ease), border-color var(--ui-out) var(--ui-ease),
               color var(--ui-out) var(--ui-ease), transform var(--ui-press) var(--ui-ease);
@@ -120,10 +131,14 @@
 }
 .slot:active:not(:disabled) { transform: translateY(1px) scale(.985); }
 .slot.is-on { background: var(--action); border-color: var(--action); color: var(--action-ink); }
-.slot:disabled { opacity: 0.45; text-decoration: line-through; cursor: not-allowed; }
+.slot:disabled {
+  border-style: dashed; background: transparent; color: var(--muted); cursor: not-allowed;
+}
+.slot:disabled .slot__time { text-decoration: line-through; }
+.slot__note { font-size: var(--t-label); font-weight: 500; }
 /* a date was picked: the times fade up into place */
 .slot-grid--in { animation: ui-rise var(--ui-slide) var(--ui-ease); }
-.slot-skel { height: 44px; border-radius: var(--r-sm); }
+.slot-skel { height: 44px; border-radius: var(--r-btn); }
 .slot-field .field-hint { display: block; padding: var(--s-3) var(--s-4); border: 1px dashed var(--line-strong); border-radius: var(--r-sm); }
 
 /* 1024 to 1279: the doctor takes the empty sixth column too, so the name does not wrap */
@@ -153,11 +168,11 @@
 }
 
 /* ---------------------------------------------------------------- tap targets on phones */
-@media (max-width: 639px), (pointer: coarse) {
+@media (max-width: 1023px), (pointer: coarse) {
   .screen .btn--sm, .screen .tab { height: 44px; }
   /* text actions keep their underline under the word; an invisible pad makes the tap area 44px */
-  .screen button.link { position: relative; }
-  .screen button.link::before { content: ""; position: absolute; inset: -12px -8px; }
+  .screen button.link:not(.dash-textbtn) { position: relative; }
+  .screen button.link:not(.dash-textbtn)::before { content: ""; position: absolute; inset: -12px -8px; }
 }
 
 /* ---------------------------------------------------------------- loading */

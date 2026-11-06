@@ -1,71 +1,101 @@
-// Local entry: connect to MongoDB, seed starter doctors if empty, listen on PORT.
-require("dotenv").config();
+// Local / long-running entry: listen on PORT, connect to MongoDB (retrying in
+// the background), seed starter doctors if the collection is empty.
+// While the database is unreachable the API answers 503 instead of exiting.
+require("dotenv").config({ quiet: true });
 
 const app = require("./app");
-const { connectDB } = require("./db");
+const { connectDB, disconnectDB } = require("./db");
+const { missingEnv, configWarnings } = require("./config");
 const { seedDoctors } = require("./utils/seedDoctors");
 const { isConfigured: isMailConfigured } = require("./utils/mailer");
+const logger = require("./utils/logger");
 
-// ========================================
-// START SERVER
-// ========================================
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
-async function startServer() {
+const missing = missingEnv();
+
+if (missing.length) {
+  logger.error("config.missing_env", {
+    message: `Missing environment variable(s): ${missing.join(", ")}. Copy server/.env.example to server/.env.`,
+  });
+  process.exit(1);
+}
+
+for (const warning of configWarnings()) logger.warn("config.warning", { message: warning });
+
+const server = app.listen(PORT, () => {
+  logger.info("server.started", {
+    port: PORT,
+    email: isMailConfigured() ? "enabled" : "disabled (no SMTP settings)",
+    health: `http://localhost:${PORT}/api/health`,
+  });
+});
+
+// Bound slow clients (slowloris) and keep-alive behind proxies.
+server.requestTimeout = 30000;
+server.headersTimeout = 15000;
+server.keepAliveTimeout = 5000;
+
+server.on("error", (error) => {
+  logger.error("server.listen_failed", { port: PORT, error });
+  process.exit(1);
+});
+
+async function connectWithRetry(attempt = 1) {
   try {
     await connectDB();
-
-    console.log("MongoDB connected successfully!");
+    logger.info("db.connected");
 
     // Idempotent and cheap: a single count query when doctors already exist.
     const seeded = await seedDoctors();
-
-    if (seeded > 0) {
-      console.log(`Seeded ${seeded} starter doctors.`);
-    }
-
-    app.listen(PORT, () => {
-      console.log("----------------------------------");
-      console.log("MediBook+ Backend Started");
-      console.log("----------------------------------");
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Email notifications: ${isMailConfigured() ? "enabled" : "disabled (no SMTP settings)"}`);
-      console.log("GET    /api/health");
-      console.log("POST   /api/auth/register");
-      console.log("POST   /api/auth/login");
-      console.log("POST   /api/auth/admin-login");
-      console.log("GET    /api/auth/me");
-      console.log("GET    /api/profile");
-      console.log("PUT    /api/profile");
-      console.log("GET    /api/doctors");
-      console.log("POST   /api/doctors            (admin)");
-      console.log("PUT    /api/doctors/:id        (admin)");
-      console.log("DELETE /api/doctors/:id        (admin)");
-      console.log("POST   /api/appointments");
-      console.log("GET    /api/appointments");
-      console.log("GET    /api/appointments/booked");
-      console.log("GET    /api/appointments/admin (admin)");
-      console.log("PUT    /api/appointments/:id/status (admin)");
-      console.log("PUT    /api/appointments/:id/cancel");
-      console.log("PUT    /api/appointments/:id/reschedule");
-      console.log("GET    /api/notifications");
-      console.log("PUT    /api/notifications/read-all");
-      console.log("GET    /api/admin/stats        (admin)");
-      console.log("GET    /api/admin/patients     (admin)");
-      console.log("----------------------------------");
-    });
+    if (seeded > 0) logger.info("db.seeded_doctors", { count: seeded });
   } catch (error) {
-    console.error("Server startup error:", error.message);
+    const delay = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
+    const hint = /whitelist|ECONNREFUSED|querySrv|ENOTFOUND|Could not connect/i.test(error.message)
+      ? "Check that MongoDB is running and, for Atlas, that your current IP address is allowed under Network Access."
+      : undefined;
 
-    if (/whitelist|ECONNREFUSED|querySrv|ENOTFOUND/i.test(error.message)) {
-      console.error(
-        "Hint: check that MongoDB is running and, for Atlas, that your current IP address is allowed under Network Access."
-      );
-    }
+    logger.error("db.connect_failed", {
+      attempt,
+      retryInMs: delay,
+      error: { name: error.name, message: error.message },
+      hint,
+    });
 
-    process.exit(1);
+    setTimeout(() => connectWithRetry(attempt + 1), delay).unref();
   }
 }
 
-startServer();
+connectWithRetry();
 
+// ========================================
+// GRACEFUL SHUTDOWN
+// ========================================
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info("server.stopping", { signal });
+
+  const force = setTimeout(() => process.exit(1), 10000);
+  force.unref();
+
+  server.close(async () => {
+    try {
+      await disconnectDB();
+    } finally {
+      process.exit(0);
+    }
+  });
+  server.closeIdleConnections?.();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("process.unhandled_rejection", {
+    error: reason instanceof Error ? reason : { message: String(reason) },
+  });
+});

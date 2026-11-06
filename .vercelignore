@@ -1,9 +1,18 @@
+# Secrets (set them in Vercel -> Settings -> Environment Variables instead)
 server/.env
 .env
 .env.*
 !.env.example
+
+# Installed on Vercel by installCommand
 server/node_modules
 node_modules
+
+# Not needed in the deployment
+server/test
+dist
+*.zip
 .claude
 .taste-skill
-dist
+.vscode
+skills-lock.json

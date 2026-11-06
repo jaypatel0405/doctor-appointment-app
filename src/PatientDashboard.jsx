@@ -14,6 +14,7 @@ import {
 import AppBar, { TabRail } from './AppBar'
 import DatePicker from './ui/DatePicker'
 import Select from './ui/Select'
+import { useConfirm } from './ui/useConfirm'
 import './dashboard.css'
 import {
   apiRequest,
@@ -46,6 +47,30 @@ function slotIndex(time) {
   return index === -1 ? TIME_SLOTS.length : index
 }
 
+// One time format across the app: "8 Nov 2026, 1:41 PM".
+function formatStamp(value) {
+  return formatDateTime(value).replace(/\b(am|pm)\b/g, part => part.toUpperCase())
+}
+
+function validateProfile(form) {
+  const errors = {}
+  const age = Number(form.age)
+
+  if (form.name.trim().length < 2) errors.name = 'Full name needs at least 2 characters.'
+  // Same rule as the server (server/routes/profileRoutes.js).
+  const phone = form.phone.trim()
+  if (phone !== '' && (phone.length > 20 || !/^[+\d][\d\s-]{6,19}$/.test(phone))) {
+    errors.phone = 'Phone number: 7 to 20 digits, spaces or dashes, may start with +.'
+  }
+  if (form.age !== '' && (!Number.isInteger(age) || age < 0 || age > 120)) {
+    errors.age = 'Age must be a whole number from 0 to 120.'
+  }
+
+  return errors
+}
+
+const PROFILE_FIELD_ORDER = ['name', 'phone', 'age', 'gender']
+
 function profileFormFromUser(user) {
   return {
     name: user?.name || '',
@@ -71,6 +96,9 @@ export default function PatientDashboard({
     profileFormFromUser(user)
   )
   const [savingProfile, setSavingProfile] = useState(false)
+  const [profileErrors, setProfileErrors] = useState({})
+
+  const [confirm, confirmDialog] = useConfirm()
 
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -163,25 +191,25 @@ export default function PatientDashboard({
       ...previous,
       [name]: value,
     }))
+
+    setProfileErrors(previous =>
+      previous[name] ? { ...previous, [name]: undefined } : previous
+    )
   }
 
   async function handleProfileSubmit(event) {
     event.preventDefault()
 
-    if (profileForm.name.trim().length < 2) {
-      showToast('Please enter your full name.', 'error')
+    const errors = validateProfile(profileForm)
+
+    if (Object.keys(errors).length > 0) {
+      setProfileErrors(errors)
+      const first = PROFILE_FIELD_ORDER.find(key => errors[key])
+      document.getElementById(`profile-${first}`)?.focus()
       return
     }
 
-    if (
-      profileForm.age !== '' &&
-      (!Number.isInteger(Number(profileForm.age)) ||
-        Number(profileForm.age) < 0 ||
-        Number(profileForm.age) > 120)
-    ) {
-      showToast('Please enter a valid age between 0 and 120.', 'error')
-      return
-    }
+    setProfileErrors({})
 
     setSavingProfile(true)
 
@@ -197,10 +225,19 @@ export default function PatientDashboard({
         setProfileForm(profileFormFromUser(updated))
       }
     } catch (requestError) {
-      showToast(
-        requestError.message || 'Could not update your profile.',
-        'error'
-      )
+      // App's updatePatientProfile already showed the toast; the server's per-field
+      // messages ({ errors: [{ field, message }] }) go under their fields.
+      const list = requestError?.data?.errors
+
+      if (Array.isArray(list) && list.length > 0) {
+        const fieldErrors = list.reduce((map, item) => {
+          if (item?.field && !map[item.field]) map[item.field] = item.message
+          return map
+        }, {})
+        setProfileErrors(fieldErrors)
+        const first = PROFILE_FIELD_ORDER.find(key => fieldErrors[key])
+        if (first) document.getElementById(`profile-${first}`)?.focus()
+      }
     } finally {
       setSavingProfile(false)
     }
@@ -330,10 +367,21 @@ export default function PatientDashboard({
     setNewTime('')
     setBookedTimes([])
     setCheckingSlots(false)
+
+    // The form mounts on the next render: put the keyboard on its first field.
+    window.setTimeout(() => {
+      document.getElementById(`new-date-${appointment.id}`)?.focus()
+    }, 0)
   }
 
   function closeReschedule() {
     slotRequestRef.current += 1
+
+    // Keyboard focus goes back to the Reschedule button that opened the form.
+    const openerId = editingId
+    window.setTimeout(() => {
+      document.getElementById(`reschedule-${openerId}`)?.focus()
+    }, 0)
 
     setEditingId(null)
     setNewDate('')
@@ -410,9 +458,13 @@ export default function PatientDashboard({
   // ---------- cancellation ----------
 
   async function handleCancel(appointment) {
-    const confirmed = window.confirm(
-      `Are you sure you want to cancel your appointment with ${appointment.doctorName}?`
-    )
+    const confirmed = await confirm({
+      title: `Cancel your appointment with ${appointment.doctorName}?`,
+      description: `${formatDate(appointment.date)} at ${appointment.time}. The clinic is told straight away and the time is freed for other patients.`,
+      confirmLabel: 'Cancel appointment',
+      cancelLabel: 'Keep it',
+      tone: 'danger',
+    })
 
     if (!confirmed) return
 
@@ -505,11 +557,11 @@ export default function PatientDashboard({
         {onLogout && (
           <button
             type="button"
-            className="link dash-textbtn"
+            className="btn btn--secondary btn--sm"
             onClick={() => onLogout()}
           >
             <LogOut size={16} aria-hidden="true" />
-            Sign out
+            <span className="appbar__hide-sm">Sign out</span>
           </button>
         )}
       </AppBar>
@@ -591,7 +643,7 @@ export default function PatientDashboard({
                   scrollToHistory()
                 }}
               >
-                View details
+                <span>View details</span>
               </button>
             </div>
           </div>
@@ -640,7 +692,7 @@ export default function PatientDashboard({
               >
                 <span className="dash-stat__label">{label}</span>
                 <span className="dash-stat__value">{value}</span>
-                <span className="dash-stat__hint">Show in list</span>
+                <span className="dash-stat__hint">View</span>
               </button>
             )
           })}
@@ -658,17 +710,22 @@ export default function PatientDashboard({
                 </div>
               </div>
 
-              <form className="form dash-profile" onSubmit={handleProfileSubmit}>
+              <form className="form dash-profile" onSubmit={handleProfileSubmit} noValidate>
                 <label className="field field--full" htmlFor="profile-name">
                   Full name
                   <input
                     id="profile-name"
+                    aria-invalid={Boolean(profileErrors.name)}
+                    aria-describedby={profileErrors.name ? 'profile-name-error' : undefined}
                     name="name"
                     value={profileForm.name}
                     onChange={handleProfileChange}
                     placeholder="Your name"
                     required
                   />
+                  {profileErrors.name && (
+                    <span className="field-error" id="profile-name-error">{profileErrors.name}</span>
+                  )}
                 </label>
 
                 <label className="field field--full" htmlFor="profile-email">
@@ -685,18 +742,25 @@ export default function PatientDashboard({
                   Phone number
                   <input
                     id="profile-phone"
+                    aria-invalid={Boolean(profileErrors.phone)}
+                    aria-describedby={profileErrors.phone ? 'profile-phone-error' : undefined}
                     name="phone"
                     type="tel"
                     value={profileForm.phone}
                     onChange={handleProfileChange}
                     placeholder="+91 98765 43210"
                   />
+                  {profileErrors.phone && (
+                    <span className="field-error" id="profile-phone-error">{profileErrors.phone}</span>
+                  )}
                 </label>
 
                 <label className="field" htmlFor="profile-age">
                   Age
                   <input
                     id="profile-age"
+                    aria-invalid={Boolean(profileErrors.age)}
+                    aria-describedby={profileErrors.age ? 'profile-age-error' : undefined}
                     name="age"
                     type="number"
                     min="0"
@@ -705,6 +769,9 @@ export default function PatientDashboard({
                     onChange={handleProfileChange}
                     placeholder="Optional"
                   />
+                  {profileErrors.age && (
+                    <span className="field-error" id="profile-age-error">{profileErrors.age}</span>
+                  )}
                 </label>
 
                 <label className="field" htmlFor="profile-gender">
@@ -823,7 +890,7 @@ export default function PatientDashboard({
 
                       <div className="dash-notice__foot">
                         <time>
-                          {formatDateTime(notification.createdAt)}
+                          {formatStamp(notification.createdAt)}
                         </time>
 
                         {!notification.read && (
@@ -834,7 +901,7 @@ export default function PatientDashboard({
                               markOneRead(notification.id)
                             }
                           >
-                            Mark read
+                            <span>Mark read</span>
                           </button>
                         )}
                       </div>
@@ -850,9 +917,11 @@ export default function PatientDashboard({
                       aria-expanded={showAllNotes}
                       onClick={() => setShowAllNotes(value => !value)}
                     >
-                      {showAllNotes
-                        ? 'Show fewer'
-                        : `Show all ${notifications.length}`}
+                      <span>
+                        {showAllNotes
+                          ? 'Show fewer'
+                          : `Show all ${notifications.length}`}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -893,6 +962,7 @@ export default function PatientDashboard({
                     onClick={() => setStatusFilter(filter)}
                   >
                     {filter}
+                    {filter !== 'All' ? ` (${counts[filter]})` : ''}
                   </button>
                 ))}
               </TabRail>
@@ -972,6 +1042,7 @@ export default function PatientDashboard({
                           {canChange && !isEditing && (
                             <div className="dash-appt__actions">
                               <button
+                                id={`reschedule-${appointment.id}`}
                                 type="button"
                                 className="btn btn--secondary btn--sm"
                                 onClick={() =>
@@ -1052,7 +1123,13 @@ export default function PatientDashboard({
                                         ? 'No slots available'
                                         : 'Select a time'
                                 }
-                                options={TIME_SLOTS.map(slot => {
+                                options={TIME_SLOTS.filter(
+                                  slot =>
+                                    !(
+                                      newDate === appointment.date &&
+                                      slot === appointment.time
+                                    )
+                                ).map(slot => {
                                   const taken = bookedTimes.includes(slot)
 
                                   return {
@@ -1092,7 +1169,7 @@ export default function PatientDashboard({
                                 className="link dash-textbtn"
                                 onClick={closeReschedule}
                               >
-                                Close
+                                <span>Close</span>
                               </button>
                             </div>
                           </form>
@@ -1108,6 +1185,8 @@ export default function PatientDashboard({
           </div>
         </div>
       </main>
+
+      {confirmDialog}
     </div>
   )
 }

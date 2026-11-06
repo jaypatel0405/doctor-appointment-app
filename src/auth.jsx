@@ -6,6 +6,13 @@ import "./auth.css";
 import { apiRequest, saveSession } from "./api";
 import { showToast } from "./toast";
 
+const FIELD_IDS = {
+  name: "auth-name",
+  email: "auth-email",
+  password: "auth-password",
+  confirmPassword: "auth-confirm-password",
+};
+
 export default function Auth({
   mode,
   onModeChange,
@@ -18,6 +25,7 @@ export default function Auth({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   const isRegister = mode === "register";
@@ -29,29 +37,38 @@ export default function Auth({
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
 
-    // Validate email
+    // Every field is checked at once; each message sits under its field.
+    const errors = {};
+
+    if (isRegister && cleanName.length < 2) {
+      errors.name = "Full name needs at least 2 characters.";
+    } else if (isRegister && cleanName.length > 100) {
+      errors.name = "Name must be at most 100 characters.";
+    }
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setError("Please enter a valid email address.");
-      return;
+      errors.email = "Enter an email address like name@example.com.";
     }
 
-    // Validate password
     if (!password || password.length < 8) {
-      setError("Password must be at least 8 characters long.");
-      return;
+      errors.password = "Password must be at least 8 characters long.";
+    } else if (isRegister && password.length > 128) {
+      errors.password = "Password must be at most 128 characters long.";
     }
 
-    // Registration validation
-    if (isRegister) {
-      if (cleanName.length < 2) {
-        setError("Please enter your full name.");
-        return;
-      }
+    if (isRegister && !errors.password && password !== confirmPassword) {
+      errors.confirmPassword = "Passwords do not match.";
+    }
 
-      if (password !== confirmPassword) {
-        setError("Passwords do not match.");
-        return;
-      }
+    setFieldErrors(errors);
+
+    const first = ["name", "email", "password", "confirmPassword"].find(
+      (key) => errors[key]
+    );
+
+    if (first) {
+      document.getElementById(FIELD_IDS[first])?.focus();
+      return;
     }
 
     setLoading(true);
@@ -93,10 +110,27 @@ export default function Auth({
 
       onSuccess(data.user);
     } catch (requestError) {
-      setError(
-        requestError.message ||
-          "Something went wrong. Please try again."
-      );
+      // The server's validator names the field ({ errors: [{ field, message }] }).
+      const list = requestError?.data?.errors;
+      const serverErrors = Array.isArray(list)
+        ? list.reduce((map, item) => {
+            if (FIELD_IDS[item?.field] && !map[item.field]) {
+              map[item.field] = item.message;
+            }
+            return map;
+          }, {})
+        : {};
+
+      if (Object.keys(serverErrors).length > 0) {
+        setFieldErrors(serverErrors);
+        const firstServer = Object.keys(FIELD_IDS).find((key) => serverErrors[key]);
+        document.getElementById(FIELD_IDS[firstServer])?.focus();
+      } else {
+        setError(
+          requestError.message ||
+            "Something went wrong. Please try again."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -104,6 +138,7 @@ export default function Auth({
 
   function switchMode() {
     setError("");
+    setFieldErrors({});
     setPassword("");
     setConfirmPassword("");
     onModeChange(isRegister ? "login" : "register");
@@ -153,6 +188,8 @@ export default function Auth({
                 Full name
                 <input
                   id="auth-name"
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  aria-describedby={fieldErrors.name ? "auth-name-error" : undefined}
                   type="text"
                   placeholder="Enter your full name"
                   value={name}
@@ -162,6 +199,11 @@ export default function Auth({
                   autoComplete="name"
                   required
                 />
+                {fieldErrors.name && (
+                  <span className="field-error" id="auth-name-error">
+                    {fieldErrors.name}
+                  </span>
+                )}
               </label>
             )}
 
@@ -169,6 +211,8 @@ export default function Auth({
               Email address
               <input
                 id="auth-email"
+                aria-invalid={Boolean(fieldErrors.email)}
+                aria-describedby={fieldErrors.email ? "auth-email-error" : undefined}
                 type="email"
                 placeholder="you@example.com"
                 value={email}
@@ -178,6 +222,11 @@ export default function Auth({
                 autoComplete="email"
                 required
               />
+              {fieldErrors.email && (
+                <span className="field-error" id="auth-email-error">
+                  {fieldErrors.email}
+                </span>
+              )}
             </label>
 
             <label className="field field--full" htmlFor="auth-password">
@@ -185,6 +234,8 @@ export default function Auth({
               <span className="ui-affix ui-affix--trail">
                 <input
                   id="auth-password"
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? "auth-password-error" : undefined}
                   type={showPassword ? "text" : "password"}
                   placeholder="At least 8 characters"
                   value={password}
@@ -213,6 +264,11 @@ export default function Auth({
                   )}
                 </button>
               </span>
+              {fieldErrors.password && (
+                <span className="field-error" id="auth-password-error">
+                  {fieldErrors.password}
+                </span>
+              )}
             </label>
 
             {isRegister && (
@@ -223,6 +279,8 @@ export default function Auth({
                 Confirm password
                 <input
                   id="auth-confirm-password"
+                  aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                  aria-describedby={fieldErrors.confirmPassword ? "auth-confirm-password-error" : undefined}
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter password again"
                   value={confirmPassword}
@@ -233,6 +291,11 @@ export default function Auth({
                   minLength={8}
                   required
                 />
+                {fieldErrors.confirmPassword && (
+                  <span className="field-error" id="auth-confirm-password-error">
+                    {fieldErrors.confirmPassword}
+                  </span>
+                )}
               </label>
             )}
 

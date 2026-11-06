@@ -1,5 +1,7 @@
+import { useRef, useState } from 'react'
 import * as RadixSelect from '@radix-ui/react-select'
 import { Check, ChevronDown } from 'lucide-react'
+import { collisionPadding, makeRoomBelow } from './position'
 import './ui.css'
 
 // Radix reserves "" for "no value", so a real empty option (e.g. "Prefer not to say") travels
@@ -23,7 +25,21 @@ export default function Select({
   ariaLabel,
   className = '',
 }) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef(null)
+  const pointerOpen = useRef(false)
   const hasEmptyOption = options.some(option => option.value === '')
+
+  function handleOpenChange(next) {
+    // Make room for the whole list under the field before it opens, but only when it opens from
+    // the keyboard: Radix opens on pointerdown and measures the drag from there, so scrolling the
+    // page mid-press would let the release pick whichever option lands under the pointer.
+    if (next && !pointerOpen.current) {
+      makeRoomBelow(triggerRef.current, Math.min(360, options.length * 44 + 10))
+    }
+    pointerOpen.current = false
+    setOpen(next)
+  }
   const radixValue = value === '' ? (hasEmptyOption ? EMPTY : '') : value
 
   return (
@@ -32,8 +48,13 @@ export default function Select({
       value={radixValue}
       onValueChange={next => onChange(next === EMPTY ? '' : next)}
       disabled={disabled}
+      open={open}
+      onOpenChange={handleOpenChange}
     >
       <RadixSelect.Trigger
+        ref={triggerRef}
+        onPointerDown={() => { pointerOpen.current = true }}
+        onKeyDown={() => { pointerOpen.current = false }}
         id={id}
         className={`ui-control ui-select__trigger ${className}`.trim()}
         aria-label={ariaLabel}
@@ -53,7 +74,7 @@ export default function Select({
           side="bottom"
           align="start"
           sideOffset={6}
-          collisionPadding={16}
+          collisionPadding={collisionPadding()}
         >
           <RadixSelect.Viewport className="ui-select__viewport">
             {options.map(option => (

@@ -31,14 +31,15 @@ export default function useTasteKit(mainRef, ready) {
         /* @vite-ignore */ kitUrl("/taste/moments/moments.js")
       );
 
-      if (cancelled) return;
-
-      if (booted) {
-        modules.forEach((module) => module.default?.init?.());
-        moments.mountAll?.(document);
-      }
-
+      // The first import ran each module's own init, against whatever DOM was there at that
+      // moment: from now on every visit has to call init itself, even if this one was cut short.
+      const firstLoad = !booted;
       booted = true;
+
+      if (cancelled || firstLoad) return;
+
+      modules.forEach((module) => module.default?.init?.());
+      moments.mountAll?.(document);
     }
 
     boot().catch((error) => console.warn("Taste kit failed to load:", error));
@@ -54,6 +55,9 @@ export default function useTasteKit(mainRef, ready) {
 
     return () => {
       moments?.unmountAll?.(main);
+      // leaving the page from the open phone menu (Sign in, My appointments) must not keep the
+      // next screen's scrolling locked
+      document.body.classList.remove("nav-locked");
     };
   }, [mainRef]);
 }
