@@ -1,0 +1,383 @@
+/* Home page CSS: what sits inside a visual (the hero's booking window, the live finder in the app
+   frame, the dashboard window), the app-frame recipe from sections-library.md, and the page's own
+   state transitions. Everything else is system.css, layout.css, cards.css and motion.css.
+   Motion here keeps to motion.md: the hover tokens (--m-in 140ms, --m-out 200ms, --m-press 90ms,
+   --m-ease), swaps a click makes (220-420ms), nothing on scroll; reduced motion rests it all. */
+
+/* the brand mark set inline in the h1 */
+.hero-mark { width: .78em; height: .78em; vertical-align: -.04em; margin-right: .04em; }
+
+/* the hero's sub-line is running text: the ink, 7:1 (layout.css sets it muted) */
+.hero--centred .hero__lead { color: var(--ink); }
+
+/* ---------------------------------------------------------------- status chips (hero, dashboard) */
+.st-chip {
+  flex: none; justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+  border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap;
+}
+.st-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.st-chip.is-ok { background: #e3efdf; color: #2f5a25; }
+.st-chip.is-wait { background: #f6ead2; color: #7a5208; }
+.st-chip.is-done { background: #e4e0d9; color: #4d4038; }
+.st-chip.is-off { background: #f6e0dc; color: #8f2a1c; }
+
+/* ---------------------------------------------------------------- shared window (hero, dashboard) */
+.bk-win {
+  background: var(--u-bg, #fff);
+  color: var(--u-ink, var(--ink));
+  border-radius: 16px;
+  overflow: hidden;
+  font: 400 14px/1.4 var(--font-text);
+  text-align: left;
+  box-shadow: 0 0 0 1px rgb(42 29 23 / 0.08), 0 30px 70px -32px rgb(42 29 23 / 0.5);
+}
+.bk-win__bar {
+  display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px;
+  border-bottom: 1px solid rgb(42 29 23 / 0.08); font-size: 13px; color: #6d6058; white-space: nowrap;
+}
+.bk-win__bar b { font-weight: 500; color: var(--ink); }
+.bk-sp { flex: 1; }
+
+/* ---------------------------------------------------------------- hero window: the booking story */
+.bk-win__body { display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+
+.bk-list { display: grid; align-content: start; gap: 2px; padding: 12px 10px; border-right: 1px solid rgb(42 29 23 / 0.08); }
+.bk-q {
+  display: flex; align-items: center; height: 34px; margin-bottom: 6px; padding: 0 12px;
+  border-radius: 10px; background: rgb(42 29 23 / 0.05); color: #6d6058; font-size: 13px;
+}
+.bk-row {
+  position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 10px; align-items: center;
+  padding: 7px 10px; border-radius: 10px;
+}
+.bk-row .ui-avatar { grid-row: span 2; }
+.bk-row b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-row time { font-size: 13px; color: #6d6058; font-variant-numeric: tabular-nums; }
+.bk-row > span:last-child { grid-column: 2 / -1; font-size: 13px; color: #6d6058; text-transform: capitalize; }
+/* the doctor being booked: a hairline and the accent bar, never a tinted band */
+.bk-row.is-on { box-shadow: inset 0 0 0 1px rgb(42 29 23 / 0.12); }
+.bk-row.is-on::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--accent); }
+.bk-row--skel b, .bk-row--skel > span:last-child { height: 10px; border-radius: 6px; background: rgb(42 29 23 / 0.08); }
+
+.bk-open { padding: 16px 24px 20px; min-width: 0; }
+.bk-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; }
+.bk-steps > * { min-width: 0; }
+.bk-doc { display: flex; align-items: center; gap: 12px; }
+.bk-doc b { display: block; font-size: 16px; font-weight: 500; }
+.bk-doc span:not(.ui-avatar) { font-size: 13px; color: #6d6058; text-transform: capitalize; }
+.bk-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.bk-slots > span {
+  position: relative; display: grid; place-items: center; height: 34px; border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgb(42 29 23 / 0.12); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* the picked slot: its own layer, so the loop can take the pick away and press it again */
+.bk-pick {
+  position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; font-style: normal;
+  background: var(--action); color: var(--action-ink);
+}
+.bk-steps .bk-pick[data-step] { transition: opacity 240ms var(--m-ease, ease), transform 240ms var(--m-ease, ease); }
+.bk-steps .bk-pick[data-step].is-off { transform: scale(.92); }
+.bk-status { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.bk-status li {
+  display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px 0 6px; border-radius: 10px;
+  background: rgb(42 29 23 / 0.035); font-size: 13px;
+}
+.bk-status__t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-status time { color: #6d6058; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1279px) {
+  .bk-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1023px) {
+  .bk-win__body { grid-template-columns: 240px minmax(0, 1fr); }
+  .bk-row { grid-template-columns: 28px minmax(0, 1fr); }
+  .bk-row time { display: none; }
+}
+/* a short laptop screen: the frame is short, so the story drops the doctor line and keeps its steps */
+@media (min-width: 1024px) and (max-height: 820px) {
+  .hero--centred .hero__window > .ly-piece { top: var(--s-4); }
+  .bk-doc { display: none; }
+  .bk-slots { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .bk-open { padding-top: 14px; }
+  .bk-list { padding-top: 10px; }
+}
+@media (max-width: 639px) {
+  .bk-win__body { grid-template-columns: minmax(0, 1fr); }
+  .bk-list { display: none; }
+  .bk-open { padding: 14px 16px 16px; }
+  .bk-win__bar > span:last-child { display: none; }
+  .bk-status time { display: none; }
+}
+
+/* ---------------------------------------------------------------- app frame (sections-library.md)
+   One window: a toolbar across the top (search, field chips), the list beside the open doctor. Nothing
+   scrolls inside it: the window is at least as tall as what it holds and takes the rest of the screen
+   (flex 1 0 auto), so no pane clips or scrolls. */
+.app.ui {
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: auto 1fr;
+  margin-top: var(--s-7); background: var(--u-bg); border: 1px solid var(--u-border); border-radius: var(--u-r); box-shadow: var(--u-shadow);
+  overflow: hidden;
+}
+main > section > .wrap > .app.fill { flex: 1 0 auto; }
+.app > .app__bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px 16px; padding: 14px 16px; border-bottom: 1px solid var(--u-line); }
+.app > .app__pane { position: relative; min-width: 0; }
+.app > .app__pane + .app__pane { border-left: 1px solid var(--u-line); }
+@media (min-width: 1024px) and (max-width: 1279px) { .app.ui { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); } }
+
+/* the search: a field drawn by the page (no native search chrome, no autofill tint), a clear button
+   that scales in once there is text */
+.fd-search {
+  position: relative; flex: 0 0 280px; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 12px;
+  border-radius: 12px; background: var(--u-fill); color: var(--u-muted);
+  box-shadow: inset 0 0 0 1px transparent;
+  transition: box-shadow var(--m-out) var(--m-ease), background-color var(--m-out) var(--m-ease);
+}
+.fd-search input {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; appearance: none; -webkit-appearance: none;
+  font: 400 16px/1 var(--font-text); color: var(--u-ink); caret-color: var(--action);
+}
+.fd-search input::placeholder { color: var(--u-muted); opacity: 1; }
+.fd-search input:-webkit-autofill { -webkit-box-shadow: 0 0 0 40px var(--u-fill) inset; -webkit-text-fill-color: var(--u-ink); }
+.fd-search:focus-within { background: var(--u-bg); box-shadow: inset 0 0 0 1px var(--action), 0 0 0 3px color-mix(in oklab, var(--action) 22%, transparent); }
+.fd-search:focus-within > .ui-icon { color: var(--u-ink); }
+.fd-search > .ui-icon { flex: none; transition: color var(--m-out) var(--m-ease); }
+.fd-clear {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px;
+  background: var(--u-fill-3); color: var(--u-ink); cursor: pointer;
+  opacity: 0; transform: scale(.6); pointer-events: none;
+  transition: opacity var(--m-out) var(--m-ease), transform var(--m-out) var(--m-ease), background-color var(--m-out) var(--m-ease);
+}
+.fd-clear .ui-icon { width: 14px; height: 14px; }
+.fd-search.has-text .fd-clear { opacity: 1; transform: none; pointer-events: auto; transition-duration: 180ms; }
+
+.fd-chips { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.fd-chip {
+  height: 30px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--u-fill); color: var(--u-ink); font: 500 13px/1 var(--font-text); text-transform: capitalize;
+  transition: background-color var(--m-out) var(--m-ease), color var(--m-out) var(--m-ease), transform var(--m-press) var(--m-ease);
+}
+.fd-chip.is-on { background: var(--ink); color: var(--bg); }
+
+/* the list: every doctor, no inner scroll */
+.app__pane--list { padding: 8px 8px 12px; }
+.fd-count { padding: 6px 12px 6px; font-size: 13px; color: var(--u-muted); }
+.fd-rows { display: grid; gap: 2px; }
+.fd-row {
+  position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 12px; align-items: center;
+  width: 100%; padding: 8px 10px 8px 12px; border: 0; border-radius: 12px; background: none; cursor: pointer; text-align: left; color: inherit; font: inherit;
+  transition: background-color var(--m-out) var(--m-ease), box-shadow var(--m-out) var(--m-ease), transform var(--m-out) var(--m-ease);
+}
+.fd-row .ui-avatar { grid-row: span 2; transition: transform var(--m-out) var(--m-ease); }
+.fd-row__who { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fd-row__sub { grid-column: 2; font-size: 14px; color: var(--u-muted); text-transform: capitalize; }
+.fd-row__fee { grid-column: 3; grid-row: 1 / span 2; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--u-muted); transition: color var(--m-out) var(--m-ease); }
+/* the open doctor: a hairline and the accent bar that grows in, never a tinted band */
+.fd-row::before {
+  content: ""; position: absolute; left: 2px; top: 12px; bottom: 12px; width: 3px; border-radius: 3px;
+  background: var(--accent); transform: scaleY(0); transition: transform 240ms var(--m-ease);
+}
+.fd-row.is-on { box-shadow: inset 0 0 0 1px var(--u-line-2); }
+.fd-row.is-on::before { transform: scaleY(1); }
+.fd-row.is-on .fd-row__fee { color: var(--u-ink); }
+.fd-all {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 40px; margin-top: 6px; border: 0; border-radius: 12px;
+  background: var(--u-fill); color: var(--u-ink); font: 500 14px/1 var(--font-text); cursor: pointer;
+  transition: background-color var(--m-out) var(--m-ease);
+}
+.fd-empty { display: grid; gap: 8px; justify-items: start; padding: 8px 12px 16px; }
+.fd-more { display: none; }
+
+/* a fine pointer: rows tint and lift a pixel, the avatar steps; chips and the clear button step; a press sinks */
+@media (hover: hover) and (pointer: fine) {
+  .fd-row:hover { background: var(--u-fill); transform: translateY(-1px); transition-duration: var(--m-in); }
+  .fd-row:hover .ui-avatar { transform: scale(1.06); transition-duration: var(--m-in); }
+  .fd-row:hover .fd-row__fee { color: var(--u-ink); transition-duration: var(--m-in); }
+  .fd-chip:not(.is-on):hover, .fd-all:hover { background: var(--u-fill-3); transition-duration: var(--m-in); }
+  .fd-clear:hover { background: color-mix(in oklab, var(--u-ink) 18%, var(--u-bg)); transition-duration: var(--m-in); }
+  .fd-search:hover:not(:focus-within) { background: var(--u-fill-2); }
+}
+.fd-row:active { transform: translateY(0) scale(.99); transition-duration: var(--m-press); }
+.fd-chip:active, .fd-clear:active, .fd-all:active { transform: scale(.96); transition-duration: var(--m-press); }
+.fd-row:focus-visible, .fd-chip:focus-visible, .fd-clear:focus-visible, .fd-all:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+
+/* the open doctor */
+.fd-open { display: grid; align-content: start; gap: 22px; padding: 28px 36px 32px; }
+.fd-open--empty { place-content: center; height: 100%; text-align: center; color: var(--u-ink); }
+.fd-open__head { display: flex; align-items: center; gap: 16px; }
+.fd-open__head > div { flex: 1; min-width: 0; }
+.fd-open__av { width: 56px; height: 56px; font-size: 18px; }
+.fd-open__name { font: var(--display-weight) 28px/1.15 var(--font-display); letter-spacing: -0.02em; }
+.fd-open__sub { color: var(--u-muted); text-transform: capitalize; }
+.fd-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.fd-facts > div { padding: 14px 16px; border-radius: 14px; background: var(--u-fill); }
+.fd-facts dt { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--u-muted); }
+.fd-facts dt .ui-icon { width: 14px; height: 14px; color: var(--u-ink); }
+.fd-facts dd { margin: 4px 0 0; font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.fd-bio { max-width: 52ch; font-size: 16px; line-height: 1.55; }
+.fd-slots { display: grid; gap: 10px; }
+.fd-slots__label { font-size: 13px; font-weight: 500; color: var(--u-ink); }
+.fd-slots__row { display: flex; flex-wrap: wrap; gap: 8px; }
+.fd-slots__row span {
+  display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--u-line-2); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.fd-book { justify-self: start; }
+
+/* the swap a click makes: the open doctor's parts arrive in order (60ms apart), the rows of a new
+   filter fade up together; only after the visitor has picked, never on load or on scroll */
+@keyframes fd-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fd-fade { from { opacity: 0; } to { opacity: 1; } }
+.fd-open.is-swap > * { animation: fd-in 420ms var(--m-ease) both; }
+.fd-open.is-swap > :nth-child(2) { animation-delay: 60ms; }
+.fd-open.is-swap > :nth-child(3) { animation-delay: 120ms; }
+.fd-open.is-swap > :nth-child(4) { animation-delay: 180ms; }
+.fd-open.is-swap > :nth-child(n + 5) { animation-delay: 240ms; }
+.fd-open.is-swap .fd-open__av { animation: fd-fade 420ms var(--m-ease) both; }
+.fd-more.is-swap > * { animation: fd-in 360ms var(--m-ease) both; }
+.fd-more.is-swap > :nth-child(2) { animation-delay: 50ms; }
+.fd-more.is-swap > :nth-child(3) { animation-delay: 100ms; }
+.fd-rows.is-swap > li { animation: fd-in 320ms var(--m-ease) both; }
+.fd-rows.is-swap > li:nth-child(2) { animation-delay: 30ms; }
+.fd-rows.is-swap > li:nth-child(3) { animation-delay: 60ms; }
+.fd-rows.is-swap > li:nth-child(n + 4) { animation-delay: 90ms; }
+
+/* the doctors section's two columns start together */
+.fd-intro { align-self: start; }
+
+/* a short laptop screen (1024x768): one-line rows, the hours left to the doctor's card */
+@media (min-width: 640px) and (max-height: 820px) {
+  .fd-count { display: none; }
+  .app__pane--list { padding-top: 8px; }
+  .fd-row { grid-template-columns: 28px minmax(0, 1fr) auto; padding: 6px 10px 6px 12px; }
+  .fd-row .ui-avatar { grid-row: auto; width: 28px; height: 28px; font-size: 11px; }
+  .fd-row__sub { display: none; }
+  .fd-row__fee { grid-row: auto; }
+  .fd-row::before { top: 8px; bottom: 8px; }
+  .fd-open { gap: 16px; padding: 20px 28px 24px; }
+  .fd-open__av { width: 48px; height: 48px; font-size: 16px; }
+  .fd-open__name { font-size: 24px; }
+  .fd-facts > div { padding: 10px 14px; }
+  .fd-facts dd { font-size: 18px; }
+  .fd-slots { display: none; }
+}
+
+/* a tablet: the toolbar wraps (search over the chips), the panes stay side by side, a little tighter */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .app > .app__bar { flex-wrap: wrap; }
+  .fd-search { flex: 1 1 100%; }
+  .fd-open { padding: 24px; gap: 20px; }
+  .fd-open__head { flex-wrap: wrap; gap: 12px 16px; }
+  .fd-open__name { font-size: 24px; }
+  .fd-facts { gap: 8px; }
+  .fd-facts > div { padding: 12px; }
+  .fd-facts dd { font-size: 17px; }
+  .fd-row__fee { display: none; }
+}
+
+/* a phone: one list; the open doctor's details open inside its row (no second pane, nothing scrolls) */
+@media (max-width: 639px) {
+  .app.ui { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .app > .app__pane--open { display: none; }
+  #doctors { --hm: 2; }
+  main > section > .wrap > .app.fill { flex: 0 0 auto; }
+  .fd-row { padding-block: 12px; }
+  .fd-more .fd-slots { display: grid; }
+  .app > .app__bar { flex-wrap: wrap; padding: 12px; }
+  .fd-search { flex: 1 1 100%; }
+  .app__pane--list { padding: 6px 6px 10px; }
+  .fd-rows { gap: 4px; }
+  .fd-rows > li.is-open { border-radius: 14px; box-shadow: inset 0 0 0 1px var(--u-line-2); }
+  .fd-rows > li.is-open > .fd-row { box-shadow: none; }
+  .fd-more { display: grid; gap: 14px; padding: 2px 12px 14px; }
+  .fd-facts { gap: 6px; }
+  .fd-facts > div { padding: 10px; }
+  .fd-facts dt { font-size: 12px; }
+  .fd-facts dd { font-size: 16px; }
+  .fd-more .fd-bio { font-size: 15px; }
+  .fd-book { justify-self: stretch; }
+}
+
+/* ---------------------------------------------------------------- how: the steps' drawn windows
+   At rest (tablet, phone, short screens, reduced motion) each step stacks its words over its window,
+   which a lit frame cuts at the bottom under a fade, sized so the three steps fill the section's two
+   screens. */
+[data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual--lit {
+  aspect-ratio: auto; height: 30svh; min-height: 220px; align-items: flex-start; overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent);
+}
+[data-moment="pinned-chapters"] .mo-pc__visual--lit > .fit { width: 100%; max-width: var(--fit-max, 420px); }
+@media (min-width: 640px) and (max-width: 1023px) {
+  [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__step { grid-template-columns: minmax(0, 1fr); }
+  [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__step :is(h3, p) { grid-column: 1; }
+  [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__step .mo-pc__visual { grid-column: 1; grid-row: auto; margin-top: var(--s-4); }
+  [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual--lit { height: calc(44svh - 60px); padding: 32px; }
+}
+@media (max-width: 639px) {
+  [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual--lit { height: 38svh; padding: 20px 16px; }
+}
+
+/* ---------------------------------------------------------------- dashboard section */
+.stack-dash { display: grid; gap: var(--s-5); align-content: start; justify-items: start; }
+.stack-dash > p { max-width: 46ch; }
+.dash-facts { display: grid; gap: var(--s-3); }
+.dash-facts li { display: flex; gap: var(--s-3); align-items: baseline; }
+.dash-facts li::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); transform: translateY(-2px); }
+button.link { border: 0; padding: 0; background: none; cursor: pointer; font: inherit; color: inherit; }
+
+/* the frame runs down to the section's foot; the window keeps 40px of ground at its sides and runs
+   out through the bottom under the fade */
+.dash-grid { align-items: start; }
+.dash-frame { --ratio: 0px; align-self: stretch; min-height: 420px; }
+.dash-frame > .stage > .dash-win { left: 40px; right: 40px; top: 40px; bottom: -48px; }
+.dash-win { container-type: inline-size; }
+.dash-win__bar > span:last-child { font-variant-numeric: tabular-nums; }
+.dash-win__cols, .dash-win__rows li { display: grid; grid-template-columns: 32px minmax(0, 1fr) 132px 104px; gap: 12px; align-items: center; }
+.dash-win__cols { padding: 10px 20px; border-bottom: 1px solid rgb(42 29 23 / 0.08); font-size: 13px; color: #6d6058; }
+.dash-win__cols span:first-child { grid-column: 1 / 3; }
+.dash-win__rows li { padding: 15px 20px; border-bottom: 1px solid rgb(42 29 23 / 0.06); transition: background-color var(--m-out) var(--m-ease); }
+.dash-win__who { min-width: 0; }
+.dash-win__who b { display: block; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-win__who small { display: block; font-size: 13px; color: #6d6058; white-space: nowrap; }
+.dash-win__spec { text-transform: capitalize; }
+.dash-win__sub-when { display: none; }
+.dash-win__when { font-size: 13px; color: #6d6058; white-space: nowrap; }
+@container (max-width: 520px) {
+  .dash-win__cols, .dash-win__rows li { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .dash-win__when { display: none; }
+  .dash-win__spec { display: none; }
+  .dash-win__sub-when { display: inline; }
+  .dash-win__who small { white-space: normal; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .dash-win__rows li:hover { background: rgb(42 29 23 / 0.035); transition-duration: var(--m-in); }
+}
+@media (max-width: 1023px) {
+  .dash-frame { flex: 1 1 0; min-height: 320px; }
+}
+@media (max-width: 639px) {
+  .dash-frame { min-height: 260px; }
+  .dash-frame > .stage > .dash-win { left: 16px; right: 16px; top: 16px; }
+  .dash-facts { display: none; }
+}
+
+/* ---------------------------------------------------------------- footer and nav buttons */
+.footer__col button { border: 0; padding: 0 0 2px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.nav__actions button.nav__link { border: 0; background: none; cursor: pointer; font: inherit; color: inherit; }
+/* a tablet: the three link columns end on the right line */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .footer .closing__links .footer__col { grid-column: auto / span 4; }
+}
+
+/* below 1280 the centred links and the actions meet: the text actions (sign in, account) leave the
+   bar; the footer and the hero's second button still reach them */
+@media (max-width: 1279px) {
+  .nav__actions > .nav__link { display: none; }
+}
+
+/* ---------------------------------------------------------------- reduced motion: everything rests */
+@media (prefers-reduced-motion: reduce) {
+  .fd-open.is-swap > *, .fd-open.is-swap .fd-open__av, .fd-rows.is-swap > li, .fd-more.is-swap > * { animation: none; }
+  .fd-row, .fd-row::before, .fd-row .ui-avatar, .fd-chip, .fd-search, .fd-clear, .fd-all, .bk-steps .bk-pick[data-step], .dash-win__rows li { transition: none; }
+  .fd-row:hover, .fd-row:active, .fd-chip:active, .fd-clear:active, .fd-all:active { transform: none; }
+  .fd-row:hover .ui-avatar { transform: none; }
+}

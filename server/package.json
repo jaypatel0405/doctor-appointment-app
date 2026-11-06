@@ -2,11 +2,12 @@
   "name": "medibook-server",
   "version": "1.0.0",
   "description": "MediBook+ Doctor Appointment Backend",
-  "main": "server.js",
+  "main": "app.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed:admin": "node createAdmin.js"
+    "seed:admin": "node createAdmin.js",
+    "seed:doctors": "node seedDoctors.js"
   },
   "keywords": [
     "medibook",

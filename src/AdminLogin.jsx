@@ -1,5 +1,7 @@
 
 import { useState } from "react";
+import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import AppBar from "./AppBar";
 import "./auth.css";
 import { apiRequest, saveSession } from "./api";
 import { showToast } from "./toast";
@@ -73,99 +75,97 @@ export default function AdminLogin({ onLogin, onBack }) {
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
+    <div className="screen">
+      <AppBar onHome={onBack} label="Staff sign in">
         <button
-          className="auth-back"
+          className="btn btn--secondary btn--sm"
           type="button"
           onClick={onBack}
         >
-          ← Back to Website
+          <ArrowLeft size={16} aria-hidden="true" />
+          Back to home
         </button>
+      </AppBar>
 
-        <div className="auth-logo auth-logo-admin">
-          A
-        </div>
+      <main className="screen__main wrap auth__main">
+        <div className="panel-box panel-box--light auth__card">
+          <div className="auth__head">
+            <p className="eyebrow-label">Clinic staff</p>
+            <h1>Staff sign in</h1>
+            <p>Manage doctors, patients and appointment requests.</p>
+          </div>
 
-        <p className="auth-eyebrow">
-          MEDIBOOK+ ADMIN PORTAL
-        </p>
-
-        <h1>Admin sign in</h1>
-
-        <p className="auth-subtitle">
-          Manage doctors, patients and appointment requests.
-        </p>
-
-        <form
-          className="auth-form"
-          onSubmit={handleSubmit}
-          noValidate
-        >
-          <label htmlFor="admin-email">
-            Admin email
-          </label>
-
-          <input
-            id="admin-email"
-            type="email"
-            placeholder="admin@medibook.com"
-            value={email}
-            onChange={(event) =>
-              setEmail(event.target.value)
-            }
-            autoComplete="username"
-            required
-          />
-
-          <label htmlFor="admin-password">
-            Password
-          </label>
-
-          <input
-            id="admin-password"
-            type={showPassword ? "text" : "password"}
-            placeholder="Enter password"
-            value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
-            autoComplete="current-password"
-            required
-          />
-
-          <label className="show-password">
-            <input
-              type="checkbox"
-              checked={showPassword}
-              onChange={(event) =>
-                setShowPassword(event.target.checked)
-              }
-            />
-            Show password
-          </label>
-
-          {error && (
-            <p className="auth-error" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button
-            className="primary-button auth-submit"
-            type="submit"
-            disabled={loading}
+          <form
+            className="form auth__form"
+            onSubmit={handleSubmit}
+            noValidate
           >
-            {loading
-              ? "Signing in..."
-              : "Sign in as Admin"}
-          </button>
-        </form>
+            <label className="field field--full" htmlFor="admin-email">
+              Staff email
+              <input
+                id="admin-email"
+                type="email"
+                placeholder="admin@medibook.com"
+                value={email}
+                onChange={(event) =>
+                  setEmail(event.target.value)
+                }
+                autoComplete="username"
+                required
+              />
+            </label>
 
-        <p className="auth-demo-note">
-          Admin access is restricted to clinic staff.
-        </p>
-      </div>
-    </main>
+            <label className="field field--full" htmlFor="admin-password">
+              Password
+              <span className="ui-affix ui-affix--trail">
+                <input
+                  id="admin-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(event) =>
+                    setPassword(event.target.value)
+                  }
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="ui-affix__btn"
+                  aria-label="Show password"
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((value) => !value)}
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} aria-hidden="true" />
+                  ) : (
+                    <Eye size={18} aria-hidden="true" />
+                  )}
+                </button>
+              </span>
+            </label>
+
+
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button
+              className="btn btn--primary auth__submit"
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+
+          <p className="auth__note">
+            Only clinic staff can sign in here. Patients sign in from the home page.
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

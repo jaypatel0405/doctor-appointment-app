@@ -1,4 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ArrowLeft,
+  CalendarX2,
+  LogOut,
+  RefreshCw,
+  Search,
+  Stethoscope,
+  Users,
+} from 'lucide-react'
+import AppBar, { TabRail } from './AppBar'
+import Checkbox from './ui/Checkbox'
 import './dashboard.css'
 import {
   apiRequest,
@@ -11,6 +22,13 @@ import {
   getInitials,
 } from './api'
 import { showToast } from './toast'
+
+// Smooth scrolling, unless the visitor asked for reduced motion.
+function smoothOrInstant() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth'
+}
 
 const adminRequest = (path, options = {}) =>
   apiRequest(path, { ...options, scope: 'admin' })
@@ -32,11 +50,20 @@ const TABS = [
   ['patients', 'Patients'],
 ]
 
-const STATUS_COLORS = {
-  Pending: '#e69b19',
-  Confirmed: '#16834a',
-  Completed: '#087f8c',
-  Cancelled: '#dc3545',
+function LoadingRows({ label }) {
+  return (
+    <div className="dash-skel" aria-busy="true">
+      <span className="sr-only">{label}</span>
+      {[0, 1, 2, 3].map(row => (
+        <div key={row} className="dash-skel__row dash-skel__row--table" aria-hidden="true">
+          <span className="skel skel--line" />
+          <span className="skel skel--line" />
+          <span className="skel skel--line skel--short" />
+          <span className="skel skel--chip" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function StatusBadge({ status }) {
@@ -191,7 +218,7 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
     })
 
     setActiveTab('doctors')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: smoothOrInstant() })
   }
 
   async function handleDoctorSubmit(event) {
@@ -281,19 +308,19 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
   })
 
   const statCards = [
-    ['Doctors', doctors.length, '#1769aa', () => setActiveTab('doctors')],
-    ['Patients', patients.length, '#6b4bd6', () => setActiveTab('patients')],
-    ['Appointments', appointments.length, '#64748b', () => showAppointments('All')],
-    ['Pending', counts.Pending, STATUS_COLORS.Pending, () => showAppointments('Pending')],
-    ['Confirmed', counts.Confirmed, STATUS_COLORS.Confirmed, () => showAppointments('Confirmed')],
-    ['Completed', counts.Completed, STATUS_COLORS.Completed, () => showAppointments('Completed')],
-    ['Cancelled', counts.Cancelled, STATUS_COLORS.Cancelled, () => showAppointments('Cancelled')],
+    ['Doctors', doctors.length, () => setActiveTab('doctors')],
+    ['Patients', patients.length, () => setActiveTab('patients')],
+    ['Appointments', appointments.length, () => showAppointments('All')],
+    ['Pending', counts.Pending, () => showAppointments('Pending')],
+    ['Confirmed', counts.Confirmed, () => showAppointments('Confirmed')],
+    ['Completed', counts.Completed, () => showAppointments('Completed')],
+    ['Cancelled', counts.Cancelled, () => showAppointments('Cancelled')],
   ]
 
   function showAppointments(filter) {
     setStatusFilter(filter)
     setActiveTab('appointments')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: smoothOrInstant() })
   }
 
   const tabCounts = {
@@ -316,28 +343,28 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
         {appointment.status === 'Pending' && (
           <button
             type="button"
-            className="btn btn-success btn-sm"
+            className="btn btn--secondary btn--sm"
             onClick={() => updateStatus(appointment, 'Confirmed')}
             disabled={busy}
           >
-            {busy ? 'Saving...' : 'Confirm'}
+            {busy ? 'Saving…' : 'Confirm'}
           </button>
         )}
 
         {appointment.status === 'Confirmed' && (
           <button
             type="button"
-            className="btn btn-teal btn-sm"
+            className="btn btn--secondary btn--sm"
             onClick={() => updateStatus(appointment, 'Completed')}
             disabled={busy}
           >
-            {busy ? 'Saving...' : 'Complete'}
+            {busy ? 'Saving…' : 'Complete'}
           </button>
         )}
 
         <button
           type="button"
-          className="btn btn-danger btn-sm"
+          className="btn btn--secondary btn--sm btn--danger"
           onClick={() => updateStatus(appointment, 'Cancelled')}
           disabled={busy}
         >
@@ -349,8 +376,8 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
 
   function renderAppointmentsTable(rows) {
     return (
-      <div className="table-wrap">
-        <table className="data-table">
+      <div className="dash-table-wrap">
+        <table className="dash-table">
           <thead>
             <tr>
               <th>Patient</th>
@@ -366,22 +393,24 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
           <tbody>
             {rows.map(appointment => (
               <tr key={appointment.id}>
-                <td>
-                  <span className="cell-primary">{appointment.patientName}</span>
-                  <span className="cell-muted">{appointment.userEmail || '-'}</span>
+                <td data-label="Patient">
+                  <span className="dash-cell-main">{appointment.patientName}</span>
+                  <span className="dash-cell-sub">{appointment.userEmail || '-'}</span>
                 </td>
-                <td>
-                  <span className="cell-primary">{appointment.doctorName}</span>
-                  <span className="cell-muted">{appointment.specialty}</span>
+                <td data-label="Doctor">
+                  <span className="dash-cell-main">{appointment.doctorName}</span>
+                  <span className="dash-cell-sub">{appointment.specialty}</span>
                 </td>
-                <td>{formatDate(appointment.date)}</td>
-                <td>{appointment.time}</td>
-                <td>{formatCurrency(appointment.fee)}</td>
-                <td>
-                  <StatusBadge status={appointment.status} />
+                <td data-label="Date" className="dash-num">{formatDate(appointment.date)}</td>
+                <td data-label="Time" className="dash-num">{appointment.time}</td>
+                <td data-label="Fee" className="dash-num">{formatCurrency(appointment.fee)}</td>
+                <td data-label="Status">
+                  <StatusBadge key={appointment.status} status={appointment.status} />
                 </td>
-                <td className="cell-actions">
-                  {renderAppointmentActions(appointment)}
+                <td data-label="Actions">
+                  <div className="dash-row-actions">
+                    {renderAppointmentActions(appointment)}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -394,189 +423,227 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
   // ---------- render ----------
 
   return (
-    <div className="dashboard">
-      <header className="dashboard-header">
-        <div className="dashboard-identity">
-          <div className="dashboard-avatar dashboard-avatar-admin">
-            {getInitials(adminUser?.name || 'Admin') || 'A'}
-          </div>
+    <div className="screen dash">
+      <AppBar onHome={onBack} label="Staff dashboard">
+        <span className="appbar__user">
+          {adminUser?.name || 'Admin'}
+        </span>
 
-          <div>
-            <h1>Admin Dashboard</h1>
-            <p>
-              Signed in as {adminUser?.name || 'Admin'}
-              {adminUser?.email ? ` (${adminUser.email})` : ''}
-            </p>
-          </div>
-        </div>
+        <button type="button" className="btn btn--secondary btn--sm" onClick={onBack}>
+          <ArrowLeft size={16} aria-hidden="true" />
+          <span className="appbar__hide-sm">Back to home</span>
+        </button>
 
-        <div className="dashboard-actions">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => loadAll({ silent: true })}
-            disabled={loading || refreshing}
-          >
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+        <button
+          type="button"
+          className="link dash-textbtn"
+          onClick={() => onLogout(false)}
+        >
+          <LogOut size={16} aria-hidden="true" />
+          Sign out
+        </button>
+      </AppBar>
 
-          <button type="button" className="btn btn-secondary" onClick={onBack}>
-            Back to Website
-          </button>
+      <main className="screen__main wrap">
+        <div className="screen__head dash-head">
+          <div className="dash-head__who">
+            <span className="avatar avatar--lg" aria-hidden="true">
+              {getInitials(adminUser?.name || 'Admin') || 'A'}
+            </span>
 
-          <button
-            type="button"
-            className="btn btn-danger"
-            onClick={() => onLogout(false)}
-          >
-            Logout
-          </button>
-        </div>
-      </header>
-
-      {error && (
-        <div className="alert alert-error" role="alert">
-          <strong>Could not load dashboard data</strong>
-          {error}
-          <br />
-          <button type="button" className="btn btn-sm" onClick={() => loadAll()}>
-            Try again
-          </button>
-        </div>
-      )}
-
-      <nav className="dashboard-tabs" aria-label="Admin sections">
-        {TABS.map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={activeTab === key ? 'tab tab-active' : 'tab'}
-            onClick={() => setActiveTab(key)}
-          >
-            {label}
-            {tabCounts[key] > 0 && (
-              <span className="tab-count">{tabCounts[key]}</span>
-            )}
-          </button>
-        ))}
-      </nav>
-
-      {/* OVERVIEW */}
-      {activeTab === 'overview' && (
-        <>
-          <div className="stat-grid">
-            {statCards.map(([label, value, color, onClick]) => (
-              <button
-                key={label}
-                type="button"
-                className="stat-card"
-                style={{ '--stat-color': color }}
-                onClick={onClick}
-              >
-                <span className="stat-label">{label}</span>
-                <span className="stat-value">{loading ? '…' : value}</span>
-                <span className="stat-hint">Click to view</span>
-              </button>
-            ))}
-          </div>
-
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>Recent appointment requests</h2>
-                <p className="panel-subtitle">The latest bookings from patients.</p>
-              </div>
-
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => showAppointments('All')}
-              >
-                View all
-              </button>
-            </div>
-
-            {loading ? (
-              <p className="loading-note">Loading appointments...</p>
-            ) : appointments.length === 0 ? (
-              <div className="empty-note">
-                <h3>No appointments yet</h3>
-                <p>New requests from patients will show up here.</p>
-              </div>
-            ) : (
-              renderAppointmentsTable(appointments.slice(0, 6))
-            )}
-          </section>
-        </>
-      )}
-
-      {/* APPOINTMENTS */}
-      {activeTab === 'appointments' && (
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Manage appointments</h2>
-              <p className="panel-subtitle">
-                Showing {filteredAppointments.length} of {appointments.length}
+            <div className="dash-head__text">
+              <p className="eyebrow-label">Staff dashboard</p>
+              <h1>Clinic overview</h1>
+              <p>
+                Signed in as {adminUser?.name || 'Admin'}
+                {adminUser?.email ? ` (${adminUser.email})` : ''}
               </p>
             </div>
           </div>
 
-          <div className="toolbar">
-            <div className="filter-chips">
-              {['All', ...APPOINTMENT_STATUSES].map(filter => (
+          <div className="dash-head__actions">
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => loadAll({ silent: true })}
+              disabled={loading || refreshing}
+            >
+              <RefreshCw
+                size={16}
+                className={refreshing ? 'ui-spin' : undefined}
+                aria-hidden="true"
+              />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="dash-alert" role="alert">
+            <div>
+              <strong>Could not load dashboard data</strong>
+              <p>{error}</p>
+            </div>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              onClick={() => loadAll()}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        <TabRail className="dash-tabs" label="Admin sections">
+          {TABS.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              className="tab"
+              aria-selected={activeTab === key}
+              onClick={() => setActiveTab(key)}
+            >
+              {label}
+              {tabCounts[key] > 0 && (
+                <span className="dash-tab-count">{tabCounts[key]}</span>
+              )}
+            </button>
+          ))}
+        </TabRail>
+
+        <div className="dash-swap" key={activeTab}>
+
+        {/* OVERVIEW */}
+        {activeTab === 'overview' && (
+          <>
+            <div className="dash-stats">
+              {statCards.map(([label, value, onClick]) => (
                 <button
-                  key={filter}
+                  key={label}
                   type="button"
-                  className={statusFilter === filter ? 'chip chip-active' : 'chip'}
-                  onClick={() => setStatusFilter(filter)}
+                  className="dash-stat"
+                  onClick={onClick}
                 >
-                  {filter}
-                  {filter !== 'All' ? ` (${counts[filter]})` : ''}
+                  <span className="dash-stat__label">{label}</span>
+                  <span className="dash-stat__value">
+                    {loading ? (
+                      <>
+                        <span className="sr-only">Loading</span>
+                        <span className="skel skel--figure" aria-hidden="true" />
+                      </>
+                    ) : (
+                      value
+                    )}
+                  </span>
+                  <span className="dash-stat__hint">Open</span>
                 </button>
               ))}
             </div>
 
-            <input
-              type="search"
-              className="search-box"
-              placeholder="Search patient, email or doctor"
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              aria-label="Search appointments"
-            />
-          </div>
+            <div className="panel-box panel-box--light dash-panel">
+              <div className="dash-panel__head">
+                <div>
+                  <h2>Recent appointment requests</h2>
+                  <p>The latest bookings from patients.</p>
+                </div>
 
-          {loading ? (
-            <p className="loading-note">Loading appointments...</p>
-          ) : filteredAppointments.length === 0 ? (
-            <div className="empty-note">
-              <h3>No matching appointments</h3>
-              <p>Try a different status filter or search term.</p>
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  onClick={() => showAppointments('All')}
+                >
+                  View all
+                </button>
+              </div>
+
+              {loading ? (
+                <LoadingRows label="Loading appointments…" />
+              ) : appointments.length === 0 ? (
+                <div className="dash-empty">
+                  <CalendarX2 size={20} className="dash-empty__icon" aria-hidden="true" />
+                  <h3>No appointments yet</h3>
+                  <p>New requests from patients will show up here.</p>
+                </div>
+              ) : (
+                renderAppointmentsTable(appointments.slice(0, 6))
+              )}
             </div>
-          ) : (
-            renderAppointmentsTable(filteredAppointments)
-          )}
-        </section>
-      )}
+          </>
+        )}
 
-      {/* DOCTORS */}
-      {activeTab === 'doctors' && (
-        <>
-          <section className="panel">
-            <div className="panel-header">
+        {/* APPOINTMENTS */}
+        {activeTab === 'appointments' && (
+          <div className="panel-box panel-box--light dash-panel">
+            <div className="dash-panel__head">
               <div>
-                <h2>{editingDoctor ? `Edit ${editingDoctor.name}` : 'Add a new doctor'}</h2>
-                <p className="panel-subtitle">
-                  Doctors you add here appear on the website immediately.
+                <h2>Manage appointments</h2>
+                <p>
+                  Showing {filteredAppointments.length} of {appointments.length}
                 </p>
               </div>
             </div>
 
-            <form onSubmit={handleDoctorSubmit}>
-              <div className="form-grid">
-                <div className="form-field">
-                  <label htmlFor="doctor-name">Doctor name</label>
+            <div className="dash-toolbar">
+              <TabRail
+                className="dash-filters"
+                label="Filter appointments by status"
+              >
+                {['All', ...APPOINTMENT_STATUSES].map(filter => (
+                  <button
+                    key={filter}
+                    type="button"
+                    role="tab"
+                    className="tab"
+                    aria-selected={statusFilter === filter}
+                    onClick={() => setStatusFilter(filter)}
+                  >
+                    {filter}
+                    {filter !== 'All' ? ` (${counts[filter]})` : ''}
+                  </button>
+                ))}
+              </TabRail>
+
+              <div className="field dash-search ui-affix ui-affix--lead">
+                <Search size={18} className="ui-affix__lead" aria-hidden="true" />
+                <input
+                  type="search"
+                  placeholder="Search patient, email or doctor"
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                  aria-label="Search appointments"
+                />
+              </div>
+            </div>
+
+            {loading ? (
+              <LoadingRows label="Loading appointments…" />
+            ) : filteredAppointments.length === 0 ? (
+              <div className="dash-empty">
+                <CalendarX2 size={20} className="dash-empty__icon" aria-hidden="true" />
+                <h3>No matching appointments</h3>
+                <p>Try a different status filter or search term.</p>
+              </div>
+            ) : (
+              renderAppointmentsTable(filteredAppointments)
+            )}
+          </div>
+        )}
+
+        {/* DOCTORS */}
+        {activeTab === 'doctors' && (
+          <>
+            <div className="panel-box panel-box--light dash-panel">
+              <div className="dash-panel__head">
+                <div>
+                  <h2>{editingDoctor ? `Edit ${editingDoctor.name}` : 'Add a new doctor'}</h2>
+                  <p>Doctors you add here appear on the website immediately.</p>
+                </div>
+              </div>
+
+              <form className="form dash-doctor-form" onSubmit={handleDoctorSubmit}>
+                <label className="field" htmlFor="doctor-name">
+                  Doctor name
                   <input
                     id="doctor-name"
                     name="name"
@@ -585,10 +652,10 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     placeholder="Dr. Jane Doe"
                     required
                   />
-                </div>
+                </label>
 
-                <div className="form-field">
-                  <label htmlFor="doctor-specialty">Specialty</label>
+                <label className="field" htmlFor="doctor-specialty">
+                  Specialty
                   <input
                     id="doctor-specialty"
                     name="specialty"
@@ -597,10 +664,10 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     placeholder="Cardiologist"
                     required
                   />
-                </div>
+                </label>
 
-                <div className="form-field">
-                  <label htmlFor="doctor-experience">Experience (years)</label>
+                <label className="field field--third" htmlFor="doctor-experience">
+                  Experience (years)
                   <input
                     id="doctor-experience"
                     name="experience"
@@ -611,10 +678,10 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     onChange={handleDoctorChange}
                     placeholder="10"
                   />
-                </div>
+                </label>
 
-                <div className="form-field">
-                  <label htmlFor="doctor-fee">Consultation fee (₹)</label>
+                <label className="field field--third" htmlFor="doctor-fee">
+                  Consultation fee (₹)
                   <input
                     id="doctor-fee"
                     name="fee"
@@ -626,10 +693,10 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     placeholder="800"
                     required
                   />
-                </div>
+                </label>
 
-                <div className="form-field">
-                  <label htmlFor="doctor-rating">Rating (0 to 5)</label>
+                <label className="field field--third" htmlFor="doctor-rating">
+                  Rating (0 to 5)
                   <input
                     id="doctor-rating"
                     name="rating"
@@ -641,10 +708,10 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     onChange={handleDoctorChange}
                     placeholder="4.8"
                   />
-                </div>
+                </label>
 
-                <div className="form-field form-field-full">
-                  <label htmlFor="doctor-bio">Short bio (optional)</label>
+                <label className="field field--full" htmlFor="doctor-bio">
+                  Short bio (optional)
                   <textarea
                     id="doctor-bio"
                     name="bio"
@@ -653,112 +720,179 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                     onChange={handleDoctorChange}
                     placeholder="One line about the doctor's focus area"
                   />
+                </label>
+
+                <Checkbox
+                  id="doctor-available"
+                  name="available"
+                  className="dash-check"
+                  checked={doctorForm.available}
+                  onChange={checked =>
+                    handleDoctorChange({
+                      target: { name: 'available', type: 'checkbox', checked },
+                    })
+                  }
+                >
+                  Accepting new appointments
+                </Checkbox>
+
+                <div className="dash-form-actions">
+                  <button type="submit" className="btn btn--primary" disabled={savingDoctor}>
+                    {savingDoctor
+                      ? 'Saving…'
+                      : editingDoctor
+                        ? 'Update doctor'
+                        : 'Add doctor'}
+                  </button>
+
+                  {editingDoctor && (
+                    <button
+                      type="button"
+                      className="btn btn--secondary"
+                      onClick={resetDoctorForm}
+                    >
+                      Cancel edit
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            <div className="panel-box panel-box--light dash-panel">
+              <div className="dash-panel__head">
+                <div>
+                  <h2>Doctor list</h2>
+                  <p>{doctors.length} doctors on the team</p>
                 </div>
               </div>
 
-              <label className="form-check">
-                <input
-                  type="checkbox"
-                  name="available"
-                  checked={doctorForm.available}
-                  onChange={handleDoctorChange}
-                />
-                Accepting new appointments
-              </label>
+              {loading ? (
+                <LoadingRows label="Loading doctors…" />
+              ) : doctors.length === 0 ? (
+                <div className="dash-empty">
+                  <Stethoscope size={20} className="dash-empty__icon" aria-hidden="true" />
+                  <h3>No doctors yet</h3>
+                  <p>Use the form above to add your first doctor.</p>
+                </div>
+              ) : (
+                <div className="dash-table-wrap">
+                  <table className="dash-table">
+                    <thead>
+                      <tr>
+                        <th>Doctor</th>
+                        <th>Specialty</th>
+                        <th>Experience</th>
+                        <th>Fee</th>
+                        <th>Rating</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
 
-              <div className="form-actions">
-                <button type="submit" className="btn" disabled={savingDoctor}>
-                  {savingDoctor
-                    ? 'Saving...'
-                    : editingDoctor
-                      ? 'Update Doctor'
-                      : 'Add Doctor'}
-                </button>
+                    <tbody>
+                      {doctors.map(doctor => (
+                        <tr key={doctor.id}>
+                          <td data-label="Doctor">
+                            <span className="dash-cell-main">{doctor.name}</span>
+                            {doctor.bio && (
+                              <span className="dash-cell-sub">{doctor.bio}</span>
+                            )}
+                          </td>
+                          <td data-label="Specialty">{doctor.specialty}</td>
+                          <td data-label="Experience" className="dash-num">{doctor.experience} years</td>
+                          <td data-label="Fee" className="dash-num">{formatCurrency(doctor.fee)}</td>
+                          <td data-label="Rating" className="dash-num">{doctor.rating ? `${doctor.rating} / 5` : '-'}</td>
+                          <td data-label="Status">
+                            <span
+                              className={
+                                doctor.available
+                                  ? 'status status-confirmed'
+                                  : 'status status-cancelled'
+                              }
+                            >
+                              {doctor.available ? 'Available' : 'Unavailable'}
+                            </span>
+                          </td>
+                          <td data-label="Actions">
+                            <div className="dash-row-actions">
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm"
+                                onClick={() => startEditDoctor(doctor)}
+                              >
+                                Edit
+                              </button>
 
-                {editingDoctor && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={resetDoctorForm}
-                  >
-                    Cancel Edit
-                  </button>
-                )}
-              </div>
-            </form>
-          </section>
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm btn--danger"
+                                onClick={() => deleteDoctor(doctor)}
+                                disabled={deletingId === doctor.id}
+                              >
+                                {deletingId === doctor.id ? 'Deleting…' : 'Delete'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
-          <section className="panel">
-            <div className="panel-header">
+        {/* PATIENTS */}
+        {activeTab === 'patients' && (
+          <div className="panel-box panel-box--light dash-panel">
+            <div className="dash-panel__head">
               <div>
-                <h2>Doctor list</h2>
-                <p className="panel-subtitle">{doctors.length} doctors on the team</p>
+                <h2>Registered patients</h2>
+                <p>{patients.length} patients have signed up</p>
               </div>
             </div>
 
             {loading ? (
-              <p className="loading-note">Loading doctors...</p>
-            ) : doctors.length === 0 ? (
-              <div className="empty-note">
-                <h3>No doctors yet</h3>
-                <p>Use the form above to add your first doctor.</p>
+              <LoadingRows label="Loading patients…" />
+            ) : patients.length === 0 ? (
+              <div className="dash-empty">
+                <Users size={20} className="dash-empty__icon" aria-hidden="true" />
+                <h3>No patients yet</h3>
+                <p>Patients appear here once they register on the website.</p>
               </div>
             ) : (
-              <div className="table-wrap">
-                <table className="data-table">
+              <div className="dash-table-wrap">
+                <table className="dash-table">
                   <thead>
                     <tr>
-                      <th>Doctor</th>
-                      <th>Specialty</th>
-                      <th>Experience</th>
-                      <th>Fee</th>
-                      <th>Rating</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th>Patient</th>
+                      <th>Phone</th>
+                      <th>Age / gender</th>
+                      <th>Joined</th>
+                      <th>Appointments</th>
+                      <th>Last appointment</th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {doctors.map(doctor => (
-                      <tr key={doctor.id}>
-                        <td>
-                          <span className="cell-primary">{doctor.name}</span>
-                          {doctor.bio && (
-                            <span className="cell-muted">{doctor.bio}</span>
-                          )}
+                    {patients.map(patient => (
+                      <tr key={patient.id}>
+                        <td data-label="Patient">
+                          <span className="dash-cell-main">{patient.name}</span>
+                          <span className="dash-cell-sub">{patient.email}</span>
                         </td>
-                        <td>{doctor.specialty}</td>
-                        <td>{doctor.experience} years</td>
-                        <td>{formatCurrency(doctor.fee)}</td>
-                        <td>{doctor.rating ? `${doctor.rating} / 5` : '-'}</td>
-                        <td>
-                          <span
-                            className={
-                              doctor.available
-                                ? 'status status-confirmed'
-                                : 'status status-cancelled'
-                            }
-                          >
-                            {doctor.available ? 'Available' : 'Unavailable'}
-                          </span>
+                        <td data-label="Phone" className="dash-num">{patient.phone || <span className="muted">-</span>}</td>
+                        <td data-label="Age / gender">
+                          {patient.age ?? <span className="muted">-</span>}
+                          {patient.gender ? ` / ${patient.gender}` : ''}
                         </td>
-                        <td className="cell-actions">
-                          <button
-                            type="button"
-                            className="btn btn-warning btn-sm"
-                            onClick={() => startEditDoctor(doctor)}
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-sm"
-                            onClick={() => deleteDoctor(doctor)}
-                            disabled={deletingId === doctor.id}
-                          >
-                            {deletingId === doctor.id ? 'Deleting...' : 'Delete'}
-                          </button>
+                        <td data-label="Joined" className="dash-num">{formatDateTime(patient.joinedAt)}</td>
+                        <td data-label="Appointments" className="dash-num">{patient.appointmentCount}</td>
+                        <td data-label="Last appointment" className="dash-num">
+                          {patient.lastAppointmentDate
+                            ? formatDate(patient.lastAppointmentDate)
+                            : <span className="muted">-</span>}
                         </td>
                       </tr>
                     ))}
@@ -766,68 +900,10 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
                 </table>
               </div>
             )}
-          </section>
-        </>
-      )}
-
-      {/* PATIENTS */}
-      {activeTab === 'patients' && (
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Registered patients</h2>
-              <p className="panel-subtitle">{patients.length} patients have signed up</p>
-            </div>
           </div>
-
-          {loading ? (
-            <p className="loading-note">Loading patients...</p>
-          ) : patients.length === 0 ? (
-            <div className="empty-note">
-              <h3>No patients yet</h3>
-              <p>Patients appear here once they register on the website.</p>
-            </div>
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Patient</th>
-                    <th>Phone</th>
-                    <th>Age / Gender</th>
-                    <th>Joined</th>
-                    <th>Appointments</th>
-                    <th>Last appointment</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {patients.map(patient => (
-                    <tr key={patient.id}>
-                      <td>
-                        <span className="cell-primary">{patient.name}</span>
-                        <span className="cell-muted">{patient.email}</span>
-                      </td>
-                      <td>{patient.phone || <span className="muted">-</span>}</td>
-                      <td>
-                        {patient.age ?? <span className="muted">-</span>}
-                        {patient.gender ? ` / ${patient.gender}` : ''}
-                      </td>
-                      <td>{formatDateTime(patient.joinedAt)}</td>
-                      <td>{patient.appointmentCount}</td>
-                      <td>
-                        {patient.lastAppointmentDate
-                          ? formatDate(patient.lastAppointmentDate)
-                          : <span className="muted">-</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
+        )}
+        </div>
+      </main>
     </div>
   )
 }

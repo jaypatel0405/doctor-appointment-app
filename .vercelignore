@@ -1,0 +1,9 @@
+server/.env
+.env
+.env.*
+!.env.example
+server/node_modules
+node_modules
+.claude
+.taste-skill
+dist

@@ -1,11 +1,16 @@
-
 import { useCallback, useEffect, useState } from "react";
-import "./App.css";
+import { ArrowLeft } from "lucide-react";
+import "./shell.css";
+import "./ui/ui.css";
 
 import Auth from "./auth";
 import AdminDashboard from "./AdminDashboard";
 import AdminLogin from "./AdminLogin";
+import AppBar from "./AppBar";
+import HomePage from "./home/HomePage";
 import PatientDashboard from "./PatientDashboard";
+import ToastHost from "./ToastHost";
+import DatePicker from "./ui/DatePicker";
 
 import {
   apiRequest,
@@ -22,43 +27,12 @@ import {
 
 import { showToast } from "./toast";
 
-function LogoMark({ large = false }) {
-  return (
-    <svg
-      className={large ? "logo-mark logo-mark-large" : "logo-mark"}
-      viewBox="0 0 64 64"
-      role="img"
-      aria-label="MediBook+ logo"
-    >
-      <rect x="3" y="3" width="58" height="58" rx="17" fill="#1769aa" />
-      <path
-        d="M32 14V50M14 32H50"
-        stroke="white"
-        strokeWidth="9"
-        strokeLinecap="round"
-      />
-      <circle cx="32" cy="32" r="5" fill="#72d7d0" />
-    </svg>
-  );
-}
-
-function MediBookLogo({ footer = false }) {
-  return (
-    <span className={footer ? "footer-brand" : "brand"}>
-      <LogoMark />
-      <span className="brand-name">
-        MediBook<span className="brand-plus">+</span>
-      </span>
-    </span>
-  );
-}
-
 function normalizeDoctor(doctor) {
   return {
     id: String(doctor.id || doctor._id || ""),
     name: doctor.name || "",
     specialty: doctor.specialty || "",
-    experience: `${Number(doctor.experience) || 0} years`,
+    experience: Number(doctor.experience) || 0,
     fee: Number(doctor.fee) || 0,
     rating: String(doctor.rating ?? "0"),
     bio: doctor.bio || "",
@@ -66,7 +40,46 @@ function normalizeDoctor(doctor) {
   };
 }
 
+async function fetchDoctorList() {
+  const data = await apiRequest("/api/doctors", {
+    auth: false,
+  });
+
+  const doctorList = Array.isArray(data.doctors) ? data.doctors : [];
+
+  return doctorList
+    .map(normalizeDoctor)
+    .filter((doctor) => doctor.id && doctor.available);
+}
+
+function reportDoctorsError(error) {
+  console.error("Load doctors error:", error);
+
+  showToast(error.message || "Unable to load doctors.", "error");
+}
+
+function appointmentListFrom(data) {
+  const appointmentList = Array.isArray(data.appointments)
+    ? data.appointments
+    : [];
+
+  return appointmentList.map(normalizeAppointment);
+}
+
+function scrollTop() {
+  window.scrollTo({ top: 0 });
+}
+
 export default function App() {
+  return (
+    <>
+      <Screens />
+      <ToastHost />
+    </>
+  );
+}
+
+function Screens() {
   const [page, setPage] = useState("home");
 
   const [user, setUser] = useState(() =>
@@ -79,13 +92,7 @@ export default function App() {
 
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
-
   const [loadingDoctors, setLoadingDoctors] = useState(true);
-  const [loadingAppointments, setLoadingAppointments] = useState(false);
-
-  const [specialty, setSpecialty] = useState("All");
-  const [searchInput, setSearchInput] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
 
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [appointmentDate, setAppointmentDate] = useState("");
@@ -94,31 +101,17 @@ export default function App() {
   const [reason, setReason] = useState("");
   const [bookingError, setBookingError] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
-  const [bookedSlots, setBookedSlots] = useState([]);
+  // Booked times are kept with the doctor and date they answer, so a new date
+  // shows the slots loading instead of the previous date's answer.
+  const [slotState, setSlotState] = useState({ key: "", times: [] });
 
-  const [showAppointments, setShowAppointments] = useState(false);
-
-  const loggedInUser = user?.name || "";
-
-  const specialties = [
-    "All",
-    ...new Set(doctors.map((doctor) => doctor.specialty).filter(Boolean)),
-  ];
-
-  const filteredDoctors = doctors.filter((doctor) => {
-    const search = searchTerm.trim().toLowerCase();
-
-    const matchesSearch =
-      doctor.name.toLowerCase().includes(search) ||
-      doctor.specialty.toLowerCase().includes(search);
-
-    const matchesSpecialty =
-      specialty === "All" || doctor.specialty === specialty;
-
-    return matchesSearch && matchesSpecialty;
-  });
-
-  const myAppointments = appointments;
+  const slotKey =
+    page === "booking" && selectedDoctor?.id && appointmentDate
+      ? `${selectedDoctor.id}|${appointmentDate}`
+      : "";
+  const bookedSlots =
+    slotKey && slotState.key === slotKey ? slotState.times : [];
+  const slotsLoading = Boolean(slotKey) && slotState.key !== slotKey;
 
   // =====================================
   // LOAD DOCTORS
@@ -128,23 +121,9 @@ export default function App() {
     setLoadingDoctors(true);
 
     try {
-      const data = await apiRequest("/api/doctors", {
-        auth: false,
-      });
-
-      const doctorList = Array.isArray(data.doctors)
-        ? data.doctors
-        : [];
-
-      setDoctors(
-        doctorList
-          .map(normalizeDoctor)
-          .filter((doctor) => doctor.id && doctor.available)
-      );
+      setDoctors(await fetchDoctorList());
     } catch (error) {
-      console.error("Load doctors error:", error);
-
-      showToast(error.message || "Unable to load doctors.", "error");
+      reportDoctorsError(error);
     } finally {
       setLoadingDoctors(false);
     }
@@ -158,19 +137,28 @@ export default function App() {
     clearSession("patient");
     setUser(null);
     setAppointments([]);
-    setShowAppointments(false);
     setSelectedDoctor(null);
     setPage("login");
 
-    showToast(
-      "Your session has expired. Please log in again.",
-      "error"
-    );
+    showToast("Your session has expired. Please sign in again.", "error");
   }, []);
 
   // =====================================
   // LOAD PATIENT APPOINTMENTS
   // =====================================
+
+  const handleAppointmentsError = useCallback(
+    (error) => {
+      console.error("Load appointments error:", error);
+
+      if (error.status === 401 || error.status === 403) {
+        handlePatientSessionExpired();
+      } else {
+        showToast(error.message || "Unable to load appointments.", "error");
+      }
+    },
+    [handlePatientSessionExpired]
+  );
 
   const loadAppointments = useCallback(async () => {
     if (!getToken("patient")) {
@@ -178,130 +166,98 @@ export default function App() {
       return false;
     }
 
-    setLoadingAppointments(true);
-
     try {
       const data = await apiRequest("/api/appointments");
 
-      const appointmentList = Array.isArray(data.appointments)
-        ? data.appointments
-        : [];
-
-      setAppointments(appointmentList.map(normalizeAppointment));
+      setAppointments(appointmentListFrom(data));
 
       return true;
     } catch (error) {
-      console.error("Load appointments error:", error);
-
-      if (error.status === 401 || error.status === 403) {
-        handlePatientSessionExpired();
-      } else {
-        showToast(
-          error.message || "Unable to load appointments.",
-          "error"
-        );
-      }
+      handleAppointmentsError(error);
 
       return false;
-    } finally {
-      setLoadingAppointments(false);
     }
-  }, [handlePatientSessionExpired]);
+  }, [handleAppointmentsError]);
 
   // =====================================
   // INITIAL DATA LOADING
   // =====================================
 
+  // State is only set once the request settles (loadingDoctors starts true).
   useEffect(() => {
-    loadDoctors();
-  }, [loadDoctors]);
+    let active = true;
 
+    fetchDoctorList()
+      .then(
+        (list) => {
+          if (active) setDoctors(list);
+        },
+        (error) => {
+          if (active) reportDoctorsError(error);
+        }
+      )
+      .finally(() => {
+        if (active) setLoadingDoctors(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Every path that signs the patient out (logout, session expiry) already
+  // clears the appointments, so this only loads them for a signed-in patient.
   useEffect(() => {
-    if (user && getToken("patient")) {
-      loadAppointments();
-    } else {
-      setAppointments([]);
-    }
-  }, [user, loadAppointments]);
+    if (!user || !getToken("patient")) return undefined;
+
+    let active = true;
+
+    apiRequest("/api/appointments").then(
+      (data) => {
+        if (active) setAppointments(appointmentListFrom(data));
+      },
+      (error) => {
+        if (active) handleAppointmentsError(error);
+      }
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [user, handleAppointmentsError]);
 
   // =====================================
   // NAVIGATION HELPERS
   // =====================================
 
-  function scrollToSection(sectionId) {
-    document.getElementById(sectionId)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }
-
-  function handleDoctorSearch(event) {
-    event.preventDefault();
-
-    setSearchTerm(searchInput.trim());
-    scrollToSection("doctors");
-  }
-
-  function resetDoctorSearch() {
-    setSearchInput("");
-    setSearchTerm("");
-    setSpecialty("All");
-  }
-
   function goToHome() {
     setPage("home");
     setSelectedDoctor(null);
     setBookingError("");
-    setShowAppointments(false);
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollTop();
   }
 
-  async function openMyAppointments() {
-    if (!user || !getToken("patient")) {
-      showToast(
-        "Please log in to view your appointments.",
-        "error"
-      );
-
-      setPage("login");
-      return;
-    }
-
-    const success = await loadAppointments();
-
-    if (!success || !getToken("patient")) {
-      return;
-    }
-
+  function goToDoctors() {
     setPage("home");
-    setShowAppointments(true);
+    setSelectedDoctor(null);
+    setBookingError("");
 
     window.setTimeout(() => {
-      scrollToSection("appointments");
-    }, 150);
+      document.getElementById("doctors")?.scrollIntoView({ block: "start" });
+    }, 100);
   }
 
   function openPatientDashboard() {
     if (!user || !getToken("patient")) {
-      showToast(
-        "Please log in to access your Patient Dashboard.",
-        "error"
-      );
+      showToast("Please sign in to see your appointments.", "error");
 
       setPage("login");
+      scrollTop();
       return;
     }
 
     setPage("patient-dashboard");
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollTop();
   }
 
   function openAdmin() {
@@ -311,10 +267,12 @@ export default function App() {
       setPage("admin-login");
     }
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollTop();
+  }
+
+  function openAuth(mode) {
+    setPage(mode);
+    scrollTop();
   }
 
   // =====================================
@@ -322,15 +280,8 @@ export default function App() {
   // =====================================
 
   function handleAuthSuccess(authUser) {
-    if (
-      !authUser ||
-      typeof authUser !== "object" ||
-      !authUser.email
-    ) {
-      showToast(
-        "Login response is incomplete. Please try again.",
-        "error"
-      );
+    if (!authUser || typeof authUser !== "object" || !authUser.email) {
+      showToast("Sign-in response is incomplete. Please try again.", "error");
 
       return;
     }
@@ -339,17 +290,9 @@ export default function App() {
 
     setUser(savedUser);
     setPage("home");
-    setShowAppointments(false);
 
-    showToast(
-      `Welcome to MediBook+, ${savedUser.name || "Patient"}!`,
-      "success"
-    );
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    // Auth already shows the one welcome toast ("Welcome back" or "Account created").
+    scrollTop();
   }
 
   // =====================================
@@ -362,13 +305,9 @@ export default function App() {
     setUser(null);
     setAppointments([]);
     setSelectedDoctor(null);
-    setShowAppointments(false);
     setPage("home");
 
-    showToast(
-      "You have logged out successfully.",
-      "success"
-    );
+    showToast("You have signed out.", "success");
   }
 
   // =====================================
@@ -376,30 +315,19 @@ export default function App() {
   // =====================================
 
   function handleAdminLogin(admin) {
-    if (
-      !admin ||
-      typeof admin !== "object" ||
-      admin.role !== "admin"
-    ) {
+    if (!admin || typeof admin !== "object" || admin.role !== "admin") {
       showToast("Invalid administrator account.", "error");
       return;
     }
 
     if (!getToken("admin")) {
-      showToast(
-        "Admin session was not saved. Please log in again.",
-        "error"
-      );
+      showToast("Admin session was not saved. Please sign in again.", "error");
       return;
     }
 
     setAdminUser(admin);
     setPage("admin");
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollTop();
   }
 
   // =====================================
@@ -413,79 +341,60 @@ export default function App() {
     setPage(expired ? "home" : "admin-login");
 
     if (expired) {
-      showToast(
-        "Your admin session has expired. Please log in again.",
-        "error"
-      );
+      showToast("Your admin session has expired. Please sign in again.", "error");
     } else {
-      showToast("Admin logged out successfully.", "success");
+      showToast("Signed out of the staff dashboard.", "success");
     }
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollTop();
   }
 
   function returnFromAdmin() {
     setPage("home");
-    setShowAppointments(false);
     loadDoctors();
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollTop();
   }
 
   // =====================================
   // UPDATE PATIENT PROFILE
   // =====================================
 
-  const updatePatientProfile = useCallback(async (profileData) => {
-    try {
-      const body =
-        typeof profileData === "string"
-          ? { name: profileData }
-          : profileData;
+  const updatePatientProfile = useCallback(
+    async (profileData) => {
+      try {
+        const body =
+          typeof profileData === "string" ? { name: profileData } : profileData;
 
-      const data = await apiRequest("/api/profile", {
-        method: "PUT",
-        body,
-      });
+        const data = await apiRequest("/api/profile", {
+          method: "PUT",
+          body,
+        });
 
-      const updatedUser = data.user || data.profile;
+        const updatedUser = data.user || data.profile;
 
-      if (!updatedUser) {
-        throw new Error(
-          "Updated profile was not returned by the server."
-        );
+        if (!updatedUser) {
+          throw new Error("Updated profile was not returned by the server.");
+        }
+
+        setUser(updatedUser);
+
+        saveSession("patient", getToken("patient"), updatedUser);
+
+        showToast("Profile updated.", "success");
+
+        return updatedUser;
+      } catch (error) {
+        if (error.status === 401 || error.status === 403) {
+          handlePatientSessionExpired();
+        } else {
+          showToast(error.message || "Could not update your profile.", "error");
+        }
+
+        throw error;
       }
-
-      setUser(updatedUser);
-
-      saveSession(
-        "patient",
-        getToken("patient"),
-        updatedUser
-      );
-
-      showToast("Profile updated successfully.", "success");
-
-      return updatedUser;
-    } catch (error) {
-      if (error.status === 401 || error.status === 403) {
-        handlePatientSessionExpired();
-      } else {
-        showToast(
-          error.message || "Could not update your profile.",
-          "error"
-        );
-      }
-
-      throw error;
-    }
-  }, [handlePatientSessionExpired]);
+    },
+    [handlePatientSessionExpired]
+  );
 
   // =====================================
   // START APPOINTMENT BOOKING
@@ -493,12 +402,10 @@ export default function App() {
 
   function bookDoctor(doctor) {
     if (!user || !getToken("patient")) {
-      showToast(
-        "Please register or log in before booking an appointment.",
-        "error"
-      );
+      showToast("Please create an account or sign in to book.", "error");
 
       setPage("login");
+      scrollTop();
       return;
     }
 
@@ -506,15 +413,11 @@ export default function App() {
     setPatientName(user.name || "");
     setAppointmentDate("");
     setAppointmentTime("");
-    setBookedSlots([]);
+    setSlotState({ key: "", times: [] });
     setReason("");
     setBookingError("");
     setPage("booking");
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollTop();
   }
 
   // =====================================
@@ -522,23 +425,18 @@ export default function App() {
   // =====================================
 
   useEffect(() => {
-    if (
-      page !== "booking" ||
-      !selectedDoctor?.id ||
-      !appointmentDate ||
-      !getToken("patient")
-    ) {
-      setBookedSlots([]);
-      return;
+    if (!slotKey || !getToken("patient")) {
+      return undefined;
     }
 
+    const [doctorId, date] = slotKey.split("|");
     const controller = new AbortController();
 
     async function loadBookedSlots() {
       try {
         const query = new URLSearchParams({
-          doctorId: selectedDoctor.id,
-          date: appointmentDate,
+          doctorId,
+          date,
         });
 
         const data = await apiRequest(
@@ -548,11 +446,10 @@ export default function App() {
           }
         );
 
-        setBookedSlots(
-          Array.isArray(data.bookedTimes)
-            ? data.bookedTimes
-            : []
-        );
+        setSlotState({
+          key: slotKey,
+          times: Array.isArray(data.bookedTimes) ? data.bookedTimes : [],
+        });
 
         setBookingError("");
       } catch (error) {
@@ -567,23 +464,16 @@ export default function App() {
           return;
         }
 
-        setBookedSlots([]);
+        setSlotState({ key: slotKey, times: [] });
 
-        setBookingError(
-          error.message || "Unable to check available times."
-        );
+        setBookingError(error.message || "Unable to check available times.");
       }
     }
 
     loadBookedSlots();
 
     return () => controller.abort();
-  }, [
-    page,
-    selectedDoctor,
-    appointmentDate,
-    handlePatientSessionExpired,
-  ]);
+  }, [slotKey, handlePatientSessionExpired]);
 
   // =====================================
   // CONFIRM APPOINTMENT
@@ -595,7 +485,7 @@ export default function App() {
     setBookingError("");
 
     if (!selectedDoctor || !appointmentDate || !appointmentTime) {
-      setBookingError("Please complete all required fields.");
+      setBookingError("Please choose a date and a time.");
       return;
     }
 
@@ -637,34 +527,25 @@ export default function App() {
 
       setPage("patient-dashboard");
       setSelectedDoctor(null);
-      setShowAppointments(false);
       setAppointmentDate("");
       setAppointmentTime("");
       setReason("");
 
-      showToast(
-        "Appointment booked successfully! Your status is Pending.",
-        "success"
-      );
+      showToast("Appointment requested. It shows as pending until the clinic confirms.", "success");
 
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+      scrollTop();
     } catch (error) {
-      setBookingError(
-        error.message || "Could not book the appointment."
-      );
+      setBookingError(error.message || "Could not book the appointment.");
 
       if (error.status === 401 || error.status === 403) {
         handlePatientSessionExpired();
       }
 
       if (error.status === 409) {
-        setBookedSlots((current) =>
-          current.includes(appointmentTime)
+        setSlotState((current) =>
+          current.key !== slotKey || current.times.includes(appointmentTime)
             ? current
-            : [...current, appointmentTime]
+            : { key: current.key, times: [...current.times, appointmentTime] }
         );
       }
     } finally {
@@ -685,20 +566,14 @@ export default function App() {
 
         await loadAppointments();
 
-        showToast(
-          "Appointment cancelled successfully.",
-          "success"
-        );
+        showToast("Appointment cancelled.", "success");
 
         return true;
       } catch (error) {
         if (error.status === 401 || error.status === 403) {
           handlePatientSessionExpired();
         } else {
-          showToast(
-            error.message || "Could not cancel the appointment.",
-            "error"
-          );
+          showToast(error.message || "Could not cancel the appointment.", "error");
         }
 
         return false;
@@ -713,44 +588,28 @@ export default function App() {
 
   const rescheduleAppointment = useCallback(
     async (id, newDate, newTime) => {
-      if (
-        !newDate ||
-        !newTime ||
-        !TIME_SLOTS.includes(newTime)
-      ) {
-        showToast(
-          "Please select a valid date and time.",
-          "error"
-        );
+      if (!newDate || !newTime || !TIME_SLOTS.includes(newTime)) {
+        showToast("Please select a valid date and time.", "error");
         return false;
       }
 
       if (isPastDate(newDate)) {
-        showToast(
-          "Please select today or a future date.",
-          "error"
-        );
+        showToast("Please select today or a future date.", "error");
         return false;
       }
 
       try {
-        await apiRequest(
-          `/api/appointments/${id}/reschedule`,
-          {
-            method: "PUT",
-            body: {
-              appointmentDate: newDate,
-              appointmentTime: newTime,
-            },
-          }
-        );
+        await apiRequest(`/api/appointments/${id}/reschedule`, {
+          method: "PUT",
+          body: {
+            appointmentDate: newDate,
+            appointmentTime: newTime,
+          },
+        });
 
         await loadAppointments();
 
-        showToast(
-          "Appointment rescheduled successfully.",
-          "success"
-        );
+        showToast("Appointment rescheduled.", "success");
 
         return true;
       } catch (error) {
@@ -770,124 +629,140 @@ export default function App() {
   );
 
   // =====================================
-  // SEPARATE APPOINTMENT BOOKING PAGE
+  // BOOKING SCREEN
   // =====================================
 
   if (page === "booking" && selectedDoctor) {
     return (
-      <div className="app">
-        <section className="booking-section">
-          <div className="booking-card">
-            <button
-              className="back-link"
-              onClick={goToHome}
-              type="button"
-            >
-              Back to doctors
-            </button>
+      <div className="screen">
+        <AppBar onHome={goToHome} label="Book a visit">
+          <button
+            className="btn btn--secondary btn--sm"
+            onClick={goToDoctors}
+            type="button"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Back to doctors
+          </button>
+        </AppBar>
 
-            <span className="eyebrow">BOOK YOUR VISIT</span>
+        <main className="screen__main wrap">
+          <div className="screen__head">
+            <p className="eyebrow-label">Step 2 of 3</p>
+            <h1>Choose a date and time</h1>
+            <p>
+              Times another patient already holds for this doctor are crossed
+              out. Your request stays pending until the clinic confirms it.
+            </p>
+          </div>
 
-            <h1>Appointment details</h1>
-
-            <div className="selected-doctor">
-              <span className="selected-doctor-initials">
-                {getInitials(selectedDoctor.name)}
-              </span>
-
-              <div>
-                <h3>{selectedDoctor.name}</h3>
-
-                <p>
-                  {selectedDoctor.specialty} ·{" "}
-                  {selectedDoctor.experience}
-                </p>
-
-                <strong>
-                  Consultation fee: ₹{selectedDoctor.fee}
-                </strong>
+          <div className="grid booking">
+            <aside className="panel-box booking__doc span-5">
+              <div className="booking__who">
+                <span className="avatar avatar--lg">
+                  {getInitials(selectedDoctor.name)}
+                </span>
+                <div>
+                  <h2>{selectedDoctor.name}</h2>
+                  <p>{selectedDoctor.specialty}</p>
+                </div>
               </div>
-            </div>
+
+              <dl className="booking__facts">
+                <div>
+                  <dt>Consultation</dt>
+                  <dd>₹{selectedDoctor.fee.toLocaleString("en-IN")}</dd>
+                </div>
+                <div>
+                  <dt>Experience</dt>
+                  <dd>{selectedDoctor.experience} years</dd>
+                </div>
+                <div>
+                  <dt>Rating</dt>
+                  <dd>{selectedDoctor.rating}</dd>
+                </div>
+              </dl>
+
+              {selectedDoctor.bio && (
+                <p className="booking__bio">{selectedDoctor.bio}</p>
+              )}
+            </aside>
 
             <form
-              className="booking-form"
+              className="form panel-box panel-box--light span-6 start-7"
               onSubmit={confirmAppointment}
             >
-              <label htmlFor="patient-name">
-                Patient name
+              <label className="field field--full" htmlFor="patient-name">
+                Patient
+                <input id="patient-name" value={patientName} readOnly required />
               </label>
 
-              <input
-                id="patient-name"
-                value={patientName}
-                readOnly
-                required
-              />
-
-              <label htmlFor="appointment-date">
-                Appointment date
+              <label className="field field--full" htmlFor="appointment-date">
+                Date
+                <DatePicker
+                  id="appointment-date"
+                  min={todayString()}
+                  value={appointmentDate}
+                  onChange={(value) => {
+                    setAppointmentDate(value);
+                    setAppointmentTime("");
+                    setBookingError("");
+                  }}
+                />
               </label>
 
-              <input
-                id="appointment-date"
-                type="date"
-                min={todayString()}
-                value={appointmentDate}
-                onChange={(event) => {
-                  setAppointmentDate(event.target.value);
-                  setAppointmentTime("");
-                  setBookingError("");
-                }}
-                required
-              />
+              <fieldset className="field field--full slot-field">
+                <legend>Time</legend>
 
-              <label htmlFor="appointment-time">
-                Appointment time
+                {appointmentDate && slotsLoading ? (
+                  <div className="slot-grid" aria-busy="true">
+                    <span className="sr-only">Checking the free times…</span>
+                    {TIME_SLOTS.map((value) => (
+                      <span key={value} className="skel slot-skel" aria-hidden="true" />
+                    ))}
+                  </div>
+                ) : appointmentDate ? (
+                  <div className="slot-grid slot-grid--in" key={appointmentDate}>
+                    {TIME_SLOTS.map((value) => {
+                      const unavailable = bookedSlots.includes(value);
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          className={
+                            appointmentTime === value ? "slot is-on" : "slot"
+                          }
+                          disabled={unavailable}
+                          aria-pressed={appointmentTime === value}
+                          aria-label={
+                            unavailable ? `${value}, already booked` : value
+                          }
+                          onClick={() => {
+                            setAppointmentTime(value);
+                            setBookingError("");
+                          }}
+                        >
+                          {value}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span className="field-hint">Pick a date to see the times.</span>
+                )}
+              </fieldset>
+
+              <label className="field field--full" htmlFor="appointment-reason">
+                Reason for the visit (optional)
+                <textarea
+                  id="appointment-reason"
+                  rows="3"
+                  placeholder="A few words about your concern"
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                />
               </label>
-
-              <select
-                id="appointment-time"
-                value={appointmentTime}
-                onChange={(event) => {
-                  setAppointmentTime(event.target.value);
-                  setBookingError("");
-                }}
-                required
-                disabled={!appointmentDate}
-              >
-                <option value="">
-                  {appointmentDate
-                    ? "Select a time"
-                    : "Select a date first"}
-                </option>
-
-                {TIME_SLOTS.map((value) => {
-                  const unavailable = bookedSlots.includes(value);
-
-                  return (
-                    <option
-                      key={value}
-                      value={value}
-                      disabled={unavailable}
-                    >
-                      {value}
-                      {unavailable ? " - Unavailable" : ""}
-                    </option>
-                  );
-                })}
-              </select>
-
-              <label htmlFor="appointment-reason">
-                Reason for visit (optional)
-              </label>
-
-              <textarea
-                id="appointment-reason"
-                rows="3"
-                placeholder="Briefly describe your concern"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-              />
 
               {bookingError && (
                 <p className="form-error" role="alert">
@@ -895,18 +770,18 @@ export default function App() {
                 </p>
               )}
 
-              <button
-                className="primary-button full-button"
-                type="submit"
-                disabled={bookingLoading}
-              >
-                {bookingLoading
-                  ? "Booking appointment..."
-                  : "Confirm Appointment"}
-              </button>
+              <div className="btn-row">
+                <button
+                  className="btn btn--primary"
+                  type="submit"
+                  disabled={bookingLoading}
+                >
+                  {bookingLoading ? "Sending request…" : "Request this appointment"}
+                </button>
+              </div>
             </form>
           </div>
-        </section>
+        </main>
       </div>
     );
   }
@@ -920,7 +795,7 @@ export default function App() {
       return (
         <Auth
           mode="login"
-          onModeChange={setPage}
+          onModeChange={openAuth}
           onHome={goToHome}
           onSuccess={handleAuthSuccess}
         />
@@ -932,50 +807,26 @@ export default function App() {
         user={user}
         appointments={appointments}
         onBack={goToHome}
-        onBookNew={() => {
-          setPage("home");
-          setShowAppointments(false);
-
-          window.setTimeout(() => {
-            scrollToSection("doctors");
-          }, 100);
-        }}
+        onBookNew={goToDoctors}
         onRefresh={loadAppointments}
         onCancel={cancelAppointment}
         onReschedule={rescheduleAppointment}
         onUpdateProfile={updatePatientProfile}
         onSessionExpired={handlePatientSessionExpired}
+        onLogout={logout}
       />
     );
   }
 
   // =====================================
-  // ADMIN LOGIN
+  // ADMIN
   // =====================================
 
-  if (page === "admin-login") {
-    return (
-      <AdminLogin
-        onLogin={handleAdminLogin}
-        onBack={goToHome}
-      />
-    );
+  if (page === "admin-login" || (page === "admin" && (!adminUser || !getToken("admin")))) {
+    return <AdminLogin onLogin={handleAdminLogin} onBack={goToHome} />;
   }
-
-  // =====================================
-  // ADMIN DASHBOARD
-  // =====================================
 
   if (page === "admin") {
-    if (!adminUser || !getToken("admin")) {
-      return (
-        <AdminLogin
-          onLogin={handleAdminLogin}
-          onBack={goToHome}
-        />
-      );
-    }
-
     return (
       <AdminDashboard
         adminUser={adminUser}
@@ -986,14 +837,14 @@ export default function App() {
   }
 
   // =====================================
-  // LOGIN AND REGISTRATION
+  // SIGN IN AND REGISTRATION
   // =====================================
 
   if (page === "login" || page === "register") {
     return (
       <Auth
         mode={page}
-        onModeChange={setPage}
+        onModeChange={openAuth}
         onHome={goToHome}
         onSuccess={handleAuthSuccess}
       />
@@ -1001,524 +852,20 @@ export default function App() {
   }
 
   // =====================================
-  // HOMEPAGE
+  // HOME
   // =====================================
 
   return (
-    <div className="app">
-      {/* HEADER */}
-
-      <header className="site-header">
-        <button
-          className="brand-button"
-          onClick={goToHome}
-          type="button"
-          aria-label="MediBook+ home"
-        >
-          <MediBookLogo />
-        </button>
-
-        <nav className="navigation">
-          <button onClick={goToHome} type="button">
-            Home
-          </button>
-
-          <button onClick={openMyAppointments} type="button">
-            My Appointments
-          </button>
-
-          <button onClick={openPatientDashboard} type="button">
-            Patient Dashboard
-          </button>
-
-          <button onClick={openAdmin} type="button">
-            Admin
-          </button>
-
-          {!loggedInUser ? (
-            <>
-              <button
-                className="nav-login"
-                onClick={() => setPage("login")}
-                type="button"
-              >
-                Login
-              </button>
-
-              <button
-                className="nav-register"
-                onClick={() => setPage("register")}
-                type="button"
-              >
-                Register
-              </button>
-            </>
-          ) : (
-            <div className="user-menu">
-              <span className="welcome-user">
-                Hi, {loggedInUser}
-              </span>
-
-              <button
-                className="nav-login"
-                onClick={logout}
-                type="button"
-              >
-                Logout
-              </button>
-            </div>
-          )}
-        </nav>
-      </header>
-
-      {/* HERO SECTION */}
-
-      <section className="hero" id="home">
-        <div className="hero-content">
-          <span className="eyebrow">
-            YOUR HEALTH, OUR PRIORITY
-          </span>
-
-          <h1>
-            Find the right doctor.
-            <br />
-            Book with confidence.
-          </h1>
-
-          <p>
-            Discover trusted doctors and book appointments easily.
-            Your journey to better health starts here.
-          </p>
-
-          <button
-            className="primary-button"
-            onClick={() => scrollToSection("doctors")}
-            type="button"
-          >
-            Find a Doctor
-          </button>
-
-          <div className="hero-stats">
-            <div>
-              <strong>{doctors.length}+</strong>
-              <span>Expert Doctors</span>
-            </div>
-
-            <div>
-              <strong>1,000+</strong>
-              <span>Happy Patients</span>
-            </div>
-
-            <div>
-              <strong>24/7</strong>
-              <span>Easy Booking</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="hero-illustration">
-          <div className="hero-logo-card">
-            <LogoMark large />
-
-            <h2>
-              MediBook<span className="brand-plus">+</span>
-            </h2>
-
-            <p>Your Healthcare Partner</p>
-
-            <div className="hero-logo-line" />
-
-            <span className="hero-logo-caption">
-              Trusted Healthcare. Easy Appointments.
-            </span>
-          </div>
-
-          <div className="floating-card">
-            Trusted healthcare
-          </div>
-        </div>
-      </section>
-
-      {/* ABOUT SECTION */}
-
-      <section className="section about-section" id="about">
-        <div className="section-heading">
-          <span className="eyebrow">ABOUT US</span>
-
-          <h2>About MediBook+</h2>
-
-          <p>
-            Making healthcare simpler, faster and more accessible.
-          </p>
-        </div>
-
-        <div className="about-content">
-          <div>
-            <h3>Your healthcare journey, made easier</h3>
-
-            <p>
-              MediBook+ is a doctor appointment booking platform
-              designed to help patients find doctors and manage
-              appointments conveniently.
-            </p>
-
-            <p>
-              Patients can explore medical specialists, check
-              consultation fees, select available appointment
-              slots and manage their bookings from one place.
-            </p>
-          </div>
-
-          <div className="about-highlight">
-            <LogoMark large />
-
-            <h3>Care made convenient</h3>
-
-            <p>
-              Find doctors. Book appointments. Manage your visits.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-
-      <section className="section how-it-works" id="services">
-        <div className="section-heading">
-          <span className="eyebrow">SIMPLE PROCESS</span>
-
-          <h2>How MediBook+ works</h2>
-
-          <p>
-            Book your doctor appointment in three simple steps.
-          </p>
-        </div>
-
-        <div className="steps-grid">
-          <article className="step-card">
-            <span className="step-number">01</span>
-
-            <h3>Find a Doctor</h3>
-
-            <p>
-              Browse doctors by name or medical specialty and
-              choose the right specialist.
-            </p>
-          </article>
-
-          <article className="step-card">
-            <span className="step-number">02</span>
-
-            <h3>Book Appointment</h3>
-
-            <p>
-              Select your preferred date and available time slot
-              to request an appointment.
-            </p>
-          </article>
-
-          <article className="step-card">
-            <span className="step-number">03</span>
-
-            <h3>Manage Your Booking</h3>
-
-            <p>
-              View your appointment details and manage eligible
-              bookings through your patient dashboard.
-            </p>
-          </article>
-        </div>
-      </section>
-
-      {/* DOCTORS SECTION */}
-
-      <section className="section doctors-section" id="doctors">
-        <div className="section-heading">
-          <span className="eyebrow">OUR SPECIALISTS</span>
-
-          <h2>Meet our expert doctors</h2>
-
-          <p>
-            Search for a doctor and book your appointment easily.
-          </p>
-        </div>
-
-        <form
-          className="doctor-search"
-          onSubmit={handleDoctorSearch}
-        >
-          <input
-            type="search"
-            placeholder="Search by doctor name or specialty..."
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            aria-label="Search doctors by name or specialty"
-          />
-
-          <button type="submit" className="search-button">
-            Search
-          </button>
-
-          <button
-            type="button"
-            className="search-reset"
-            onClick={resetDoctorSearch}
-          >
-            Reset
-          </button>
-        </form>
-
-        <div className="specialty-filters">
-          {specialties.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={
-                specialty === item
-                  ? "filter active-filter"
-                  : "filter"
-              }
-              onClick={() => setSpecialty(item)}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-
-        <p className="search-result-count" aria-live="polite">
-          {filteredDoctors.length} doctor
-          {filteredDoctors.length === 1 ? "" : "s"} found
-          {searchTerm ? ` for "${searchTerm}"` : ""}
-        </p>
-
-        {loadingDoctors ? (
-          <div className="empty-state">
-            <h3>Loading doctors...</h3>
-
-            <p>Please wait while we load our specialists.</p>
-          </div>
-        ) : filteredDoctors.length === 0 ? (
-          <div className="empty-state">
-            <h3>No doctors found</h3>
-
-            <p>
-              Please try another doctor name or specialty.
-            </p>
-
-            <button
-              type="button"
-              className="primary-button"
-              onClick={resetDoctorSearch}
-            >
-              Show All Doctors
-            </button>
-          </div>
-        ) : (
-          <div className="doctor-grid">
-            {filteredDoctors.map((doctor) => (
-              <article className="doctor-card" key={doctor.id}>
-                <div className="doctor-photo">
-                  <span className="doctor-initials">
-                    {getInitials(doctor.name)}
-                  </span>
-
-                  <span className="availability">
-                    Available
-                  </span>
-                </div>
-
-                <div className="doctor-info">
-                  <div className="doctor-rating">
-                    Rating: {doctor.rating}
-                  </div>
-
-                  <h3>{doctor.name}</h3>
-
-                  <p className="doctor-specialty">
-                    {doctor.specialty}
-                  </p>
-
-                  <p className="experience">
-                    {doctor.experience} experience
-                  </p>
-
-                  <div className="doctor-card-bottom">
-                    <div>
-                      <span>Consultation</span>
-
-                      <strong>
-                        ₹{doctor.fee.toLocaleString("en-IN")}
-                      </strong>
-                    </div>
-
-                    <button
-                      className="book-button"
-                      onClick={() => bookDoctor(doctor)}
-                      type="button"
-                    >
-                      Book Now
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* MY APPOINTMENTS */}
-
-      {showAppointments && (
-        <section
-          className="section appointments-section"
-          id="appointments"
-        >
-          <div className="section-heading">
-            <span className="eyebrow">YOUR BOOKINGS</span>
-
-            <h2>My Appointments</h2>
-
-            <p>View and manage your appointments.</p>
-          </div>
-
-          {loadingAppointments ? (
-            <div className="empty-state">
-              <h3>Loading appointments...</h3>
-            </div>
-          ) : myAppointments.length === 0 ? (
-            <div className="empty-state">
-              <h3>No appointments yet</h3>
-
-              <p>
-                Your booked appointments will appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="appointment-list">
-              {myAppointments.map((appointment) => (
-                <article
-                  className="appointment-card"
-                  key={appointment.id}
-                >
-                  <div className="appointment-icon">
-                    Appointment
-                  </div>
-
-                  <div className="appointment-details">
-                    <h3>{appointment.doctorName}</h3>
-
-                    <p>{appointment.specialty}</p>
-
-                    <p>Date: {appointment.date}</p>
-
-                    <p>Time: {appointment.time}</p>
-
-                    <p>Patient: {appointment.patientName}</p>
-
-                    <p>Fee: ₹{appointment.fee}</p>
-
-                    {appointment.reason && (
-                      <p>Reason: {appointment.reason}</p>
-                    )}
-                  </div>
-
-                  <div className="appointment-actions">
-                    <span
-                      className={`status status-${(
-                        appointment.status || "Pending"
-                      ).toLowerCase()}`}
-                    >
-                      {appointment.status || "Pending"}
-                    </span>
-
-                    {appointment.status !== "Cancelled" &&
-                      appointment.status !== "Completed" && (
-                        <button
-                          className="cancel-button"
-                          onClick={() =>
-                            cancelAppointment(appointment.id)
-                          }
-                          type="button"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* FOOTER */}
-
-      <footer className="site-footer">
-        <div className="footer-grid">
-          <div className="footer-column footer-about">
-            <MediBookLogo footer />
-
-            <p>
-              MediBook+ makes finding doctors and booking healthcare
-              appointments simple and convenient.
-            </p>
-
-            <p>Your health, our priority.</p>
-          </div>
-
-          <div className="footer-column">
-            <h4>Quick Links</h4>
-
-            <div className="footer-links">
-              <button type="button" onClick={goToHome}>
-                Home
-              </button>
-
-              <button
-                type="button"
-                onClick={() => scrollToSection("about")}
-              >
-                About Us
-              </button>
-
-              <button
-                type="button"
-                onClick={() => scrollToSection("services")}
-              >
-                Our Services
-              </button>
-
-              <button
-                type="button"
-                onClick={() => scrollToSection("doctors")}
-              >
-                Find Doctors
-              </button>
-
-              <button
-                type="button"
-                onClick={openMyAppointments}
-              >
-                My Appointments
-              </button>
-            </div>
-          </div>
-
-          <div className="footer-column">
-            <h4>Our Services</h4>
-
-            <p>Doctor Search</p>
-            <p>Online Appointment Booking</p>
-            <p>Appointment Management</p>
-            <p>Patient Dashboard</p>
-            <p>Patient Profile Management</p>
-          </div>
-        </div>
-
-        <p className="footer-small">
-          © {new Date().getFullYear()} MediBook+. All rights reserved.
-        </p>
-      </footer>
-    </div>
+    <HomePage
+      user={user}
+      doctors={doctors}
+      loadingDoctors={loadingDoctors}
+      onBook={bookDoctor}
+      onLogin={() => openAuth("login")}
+      onRegister={() => openAuth("register")}
+      onLogout={logout}
+      onDashboard={openPatientDashboard}
+      onAdmin={openAdmin}
+    />
   );
 }

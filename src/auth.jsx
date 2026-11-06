@@ -1,5 +1,7 @@
 
 import { useState } from "react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react";
+import AppBar from "./AppBar";
 import "./auth.css";
 import { apiRequest, saveSession } from "./api";
 import { showToast } from "./toast";
@@ -108,160 +110,167 @@ export default function Auth({
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
+    <div className="screen">
+      <AppBar
+        onHome={onHome}
+        label={isRegister ? "Create an account" : "Sign in"}
+      >
         <button
-          className="auth-back"
+          className="btn btn--secondary btn--sm"
           type="button"
           onClick={onHome}
         >
-          ← Back to Home
+          <ArrowLeft size={16} aria-hidden="true" />
+          Back to home
         </button>
+      </AppBar>
 
-        <div className="auth-logo">+</div>
-
-        <p className="auth-eyebrow">
-          WELCOME TO MEDIBOOK+
-        </p>
-
-        <h1>
-          {isRegister
-            ? "Create your account"
-            : "Welcome back!"}
-        </h1>
-
-        <p className="auth-subtitle">
-          {isRegister
-            ? "Register to book and manage your doctor appointments."
-            : "Log in with your registered email and password."}
-        </p>
-
-        <form
-          className="auth-form"
-          onSubmit={handleSubmit}
-          noValidate
-        >
-          {isRegister && (
-            <>
-              <label htmlFor="auth-name">
-                Full name
-              </label>
-
-              <input
-                id="auth-name"
-                type="text"
-                placeholder="Enter your full name"
-                value={name}
-                onChange={(event) =>
-                  setName(event.target.value)
-                }
-                autoComplete="name"
-                required
-              />
-            </>
-          )}
-
-          <label htmlFor="auth-email">
-            Email address
-          </label>
-
-          <input
-            id="auth-email"
-            type="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(event) =>
-              setEmail(event.target.value)
-            }
-            autoComplete="email"
-            required
-          />
-
-          <label htmlFor="auth-password">
-            Password
-          </label>
-
-          <input
-            id="auth-password"
-            type={showPassword ? "text" : "password"}
-            placeholder="At least 8 characters"
-            value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
-            autoComplete={
-              isRegister
-                ? "new-password"
-                : "current-password"
-            }
-            minLength={8}
-            required
-          />
-
-          {isRegister && (
-            <>
-              <label htmlFor="auth-confirm-password">
-                Confirm password
-              </label>
-
-              <input
-                id="auth-confirm-password"
-                type={showPassword ? "text" : "password"}
-                placeholder="Enter password again"
-                value={confirmPassword}
-                onChange={(event) =>
-                  setConfirmPassword(event.target.value)
-                }
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </>
-          )}
-
-          <label className="show-password">
-            <input
-              type="checkbox"
-              checked={showPassword}
-              onChange={(event) =>
-                setShowPassword(event.target.checked)
-              }
-            />
-            Show password
-          </label>
-
-          {error && (
-            <p className="auth-error" role="alert">
-              {error}
+      <main className="screen__main wrap auth__main">
+        <div className="panel-box panel-box--light auth__card">
+          <div className="auth__head">
+            <p className="eyebrow-label">
+              {isRegister ? "New to MediBook+" : "Patients"}
             </p>
-          )}
 
-          <button
-            className="primary-button auth-submit"
-            type="submit"
-            disabled={loading}
+            <h1>
+              {isRegister ? "Create an account" : "Sign in"}
+            </h1>
+
+            <p>
+              {isRegister
+                ? "Register to book and manage your doctor appointments."
+                : "Use the email and password you registered with."}
+            </p>
+          </div>
+
+          <form
+            className="form auth__form"
+            onSubmit={handleSubmit}
+            noValidate
           >
-            {loading
-              ? "Please wait..."
-              : isRegister
-                ? "Create Account"
-                : "Login"}
-          </button>
-        </form>
+            {isRegister && (
+              <label className="field field--full auth__in" htmlFor="auth-name">
+                Full name
+                <input
+                  id="auth-name"
+                  type="text"
+                  placeholder="Enter your full name"
+                  value={name}
+                  onChange={(event) =>
+                    setName(event.target.value)
+                  }
+                  autoComplete="name"
+                  required
+                />
+              </label>
+            )}
 
-        <p className="auth-switch">
-          {isRegister
-            ? "Already have an account?"
-            : "Don't have an account?"}{" "}
+            <label className="field field--full" htmlFor="auth-email">
+              Email address
+              <input
+                id="auth-email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(event) =>
+                  setEmail(event.target.value)
+                }
+                autoComplete="email"
+                required
+              />
+            </label>
 
-          <button
-            type="button"
-            onClick={switchMode}
-          >
-            {isRegister ? "Login" : "Register"}
-          </button>
-        </p>
-      </div>
-    </main>
+            <label className="field field--full" htmlFor="auth-password">
+              Password
+              <span className="ui-affix ui-affix--trail">
+                <input
+                  id="auth-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="At least 8 characters"
+                  value={password}
+                  onChange={(event) =>
+                    setPassword(event.target.value)
+                  }
+                  autoComplete={
+                    isRegister
+                      ? "new-password"
+                      : "current-password"
+                  }
+                  minLength={8}
+                  required
+                />
+                <button
+                  type="button"
+                  className="ui-affix__btn"
+                  aria-label="Show password"
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((value) => !value)}
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} aria-hidden="true" />
+                  ) : (
+                    <Eye size={18} aria-hidden="true" />
+                  )}
+                </button>
+              </span>
+            </label>
+
+            {isRegister && (
+              <label
+                className="field field--full auth__in"
+                htmlFor="auth-confirm-password"
+              >
+                Confirm password
+                <input
+                  id="auth-confirm-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter password again"
+                  value={confirmPassword}
+                  onChange={(event) =>
+                    setConfirmPassword(event.target.value)
+                  }
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </label>
+            )}
+
+
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button
+              className="btn btn--primary auth__submit"
+              type="submit"
+              disabled={loading}
+            >
+              {loading
+                ? "Please wait…"
+                : isRegister
+                  ? "Create account"
+                  : "Sign in"}
+            </button>
+          </form>
+
+          <p className="auth__switch">
+            {isRegister
+              ? "Already have an account?"
+              : "New to MediBook+?"}{" "}
+            <button
+              type="button"
+              className="link"
+              onClick={switchMode}
+            >
+              {isRegister ? "Sign in" : "Create an account"}
+              <ArrowRight size={16} className="ui-nudge" aria-hidden="true" />
+            </button>
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

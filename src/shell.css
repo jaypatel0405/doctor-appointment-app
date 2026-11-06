@@ -1,0 +1,247 @@
+/* The screens past the home page (sign in, booking, the patient and staff dashboards) on the same
+   system as the home page: system.css tokens, type, buttons, .form/.field, one radius scale.
+   These are app screens, not marketing sections, so they scroll freely instead of one per screen. */
+
+/* motion.md's numbers, with fallbacks in case motion.css is not linked */
+.screen {
+  --ui-in: var(--m-in, 140ms); --ui-out: var(--m-out, 200ms); --ui-press: var(--m-press, 90ms);
+  --ui-panel: var(--m-panel, 200ms); --ui-slide: var(--m-slide, 240ms);
+  --ui-ease: var(--m-ease, cubic-bezier(.2, .8, .2, 1));
+}
+
+/* ---------------------------------------------------------------- bar */
+.appbar {
+  position: sticky; top: 0; z-index: 10; height: var(--nav);
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.appbar__in { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); height: 100%; }
+.appbar__logo { border: 0; padding: 0; background: none; cursor: pointer; color: var(--ink); }
+.appbar__label {
+  margin-left: var(--s-3); padding-left: var(--s-3); border-left: 1px solid var(--line-strong);
+  font: 400 var(--t-small) / 1 var(--font-text); letter-spacing: 0; color: var(--muted);
+}
+.appbar__right { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.appbar__user { font-size: var(--t-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appbar__logo { flex: none; min-height: 44px; display: inline-flex; align-items: center; }
+@media (max-width: 1023px) {
+  .appbar__user { display: none; }
+}
+@media (max-width: 639px) {
+  .appbar__label { display: none; }
+  .appbar__right { gap: var(--s-2); }
+  /* the logo already goes home: on a phone that button keeps its icon, its words for screen readers */
+  .appbar__hide-sm { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .appbar__right .btn--sm:has(.appbar__hide-sm) { width: 44px; padding: 0; }
+  .appbar__right .btn--sm:has(.appbar__hide-sm) svg { margin: 0; }
+}
+
+/* the sticky bar never covers the top of a panel a button scrolled to */
+.screen [id], .screen .dash-panel { scroll-margin-top: calc(var(--nav) + var(--s-4)); }
+
+/* ---------------------------------------------------------------- screen */
+.screen { min-height: 100svh; background: var(--bg); color: var(--ink); }
+.screen__main { padding-block: var(--s-8) var(--s-9); }
+@media (max-width: 1023px) { .screen__main { padding-block: var(--s-7) var(--s-8); } }
+@media (max-width: 639px) { .screen__main { padding-block: var(--s-6) var(--s-7); } .screen__head { margin-bottom: var(--s-6); } }
+.screen__head { display: grid; gap: var(--s-3); margin-bottom: var(--s-7); }
+.screen__head h1 { font-size: var(--t-h2); }
+.screen__head p { color: var(--muted); max-width: 62ch; }
+.eyebrow-label { font-size: var(--t-label); font-weight: 500; color: var(--muted); }
+
+.panel-box {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s-6);
+}
+.panel-box--light { background: color-mix(in oklab, var(--bg) 55%, #fff); }
+
+/* forms: the kit's .field, plus states it lacks */
+.field :is(input, select, textarea)[readonly] { color: var(--muted); }
+.field :is(input, select, textarea):focus { outline: 2px solid var(--action); outline-offset: 1px; }
+.field :is(input, select, textarea):disabled { opacity: 0.6; cursor: not-allowed; }
+.field-hint { font-size: var(--t-small); font-weight: 400; color: var(--muted); }
+.form-error {
+  padding: var(--s-3) var(--s-4); border-radius: var(--r-sm);
+  background: #f6e0dc; color: #8f2a1c; font-size: var(--t-small);
+  animation: ui-rise var(--ui-panel) var(--ui-ease);
+}
+.field :is(input, select, textarea) {
+  transition: border-color var(--ui-in) var(--ui-ease), box-shadow var(--ui-in) var(--ui-ease);
+}
+.field :is(input, select, textarea):hover:not(:disabled, [readonly]) { border-color: color-mix(in oklab, var(--ink) 34%, transparent); }
+.form .btn { width: 100%; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* the status chip, one look across the app */
+.status {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+  border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap;
+  background: #f6ead2; color: #7a5208;
+}
+.status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status { animation: ui-chip var(--ui-out) var(--ui-ease); }
+.status-pending { background: #f6ead2; color: #7a5208; }
+.status-confirmed { background: #e3efdf; color: #2f5a25; }
+.status-completed { background: #e4e0d9; color: #4d4038; }
+.status-cancelled { background: #f6e0dc; color: #8f2a1c; }
+
+.avatar {
+  display: inline-grid; place-items: center; flex: none; width: 48px; height: 48px; border-radius: 50%;
+  background: color-mix(in oklab, var(--accent) 16%, var(--bg)); color: var(--accent);
+  font-weight: 500; font-size: 16px;
+}
+.avatar--lg { width: 64px; height: 64px; font-size: 20px; }
+
+/* ---------------------------------------------------------------- booking */
+.booking { align-items: start; }
+.booking__doc { display: grid; gap: var(--s-5); }
+.booking__who { display: flex; gap: var(--s-4); align-items: center; }
+.booking__who h2 { font-size: var(--t-h3); }
+.booking__who p { color: var(--muted); text-transform: capitalize; }
+.booking__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); margin: 0; }
+.booking__facts > div { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--bg); }
+.booking__facts dt { font-size: var(--t-label); color: var(--muted); }
+.booking__facts dd { margin: 2px 0 0; font-size: clamp(16px, 1.2vw + 4px, 20px); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* a phone, or a narrow doctor column (1024 to 1279): the three facts stack as label and value rows */
+@media (max-width: 639px), (min-width: 1024px) and (max-width: 1279px) {
+  .booking__facts { grid-template-columns: minmax(0, 1fr); gap: var(--s-2); }
+  .booking__facts > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
+  .booking__facts dd { margin: 0; }
+}
+.booking__bio { color: var(--ink); }
+
+.slot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
+.slot {
+  height: 44px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--bg);
+  font: 500 var(--t-small) / 1 var(--font-text); font-variant-numeric: tabular-nums; color: var(--ink); cursor: pointer;
+  transition: background-color var(--ui-out) var(--ui-ease), border-color var(--ui-out) var(--ui-ease),
+              color var(--ui-out) var(--ui-ease), transform var(--ui-press) var(--ui-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .slot:hover:not(:disabled) { border-color: var(--ink); transform: translateY(-1px); transition-duration: var(--ui-in), var(--ui-in), var(--ui-in), var(--ui-press); }
+}
+.slot:active:not(:disabled) { transform: translateY(1px) scale(.985); }
+.slot.is-on { background: var(--action); border-color: var(--action); color: var(--action-ink); }
+.slot:disabled { opacity: 0.45; text-decoration: line-through; cursor: not-allowed; }
+/* a date was picked: the times fade up into place */
+.slot-grid--in { animation: ui-rise var(--ui-slide) var(--ui-ease); }
+.slot-skel { height: 44px; border-radius: var(--r-sm); }
+.slot-field .field-hint { display: block; padding: var(--s-3) var(--s-4); border: 1px dashed var(--line-strong); border-radius: var(--r-sm); }
+
+/* 1024 to 1279: the doctor takes the empty sixth column too, so the name does not wrap */
+@media (min-width: 1024px) and (max-width: 1279px) { .booking > .booking__doc { grid-column: 1 / span 6; } }
+
+/* the form column: the kit's .btn-row under the fields */
+.booking .btn-row { grid-column: 1 / -1; margin-top: var(--s-2); }
+
+@media (max-width: 1023px) {
+  .booking > * { grid-column: 1 / -1; }
+  .booking { row-gap: var(--s-5); }
+}
+@media (max-width: 639px) {
+  .panel-box { padding: var(--s-5); }
+  .booking__who h2 { font-size: 22px; }
+  .slot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .booking .btn-row .btn { width: 100%; }
+}
+
+/* the kit turns a phone .btn-row's secondary into a text link, but the pill look keeps its tint: an
+   underlined pill. These screens keep the plain pill secondary at every width. */
+@media (max-width: 639px) {
+  .screen .btn-row > .btn--secondary { text-decoration: none; }
+  html:is([data-buttons="pill"], [data-buttons="tonal"]) .screen .btn-row > .btn--secondary {
+    background: color-mix(in oklab, var(--ink) 8%, var(--bg)); border-color: transparent;
+  }
+}
+
+/* ---------------------------------------------------------------- tap targets on phones */
+@media (max-width: 639px), (pointer: coarse) {
+  .screen .btn--sm, .screen .tab { height: 44px; }
+  /* text actions keep their underline under the word; an invisible pad makes the tap area 44px */
+  .screen button.link { position: relative; }
+  .screen button.link::before { content: ""; position: absolute; inset: -12px -8px; }
+}
+
+/* ---------------------------------------------------------------- loading */
+.skel {
+  display: block; border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
+  background-image: linear-gradient(90deg, transparent 0, color-mix(in oklab, var(--bg) 70%, #fff) 50%, transparent 100%);
+  background-size: 200% 100%; background-repeat: no-repeat; background-position: 150% 0;
+  animation: ui-shimmer 1.4s linear infinite;
+}
+.skel--line { height: 14px; }
+.skel--short { width: 40%; }
+.skel--chip { width: 88px; height: 26px; border-radius: 999px; }
+.skel--figure { display: inline-block; width: 2.2ch; height: 0.9em; vertical-align: -0.05em; }
+
+/* ---------------------------------------------------------------- scrollbars
+   Inner screens avoid inner scroll areas; where one remains (a wide table on a large screen) and
+   for the page itself while an inner screen is shown, the bar is thin, in the ink, on no track. */
+html:has(.screen), .screen .dash-table-wrap {
+  scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--ink) 25%, transparent) transparent;
+}
+html:has(.screen)::-webkit-scrollbar, .screen .dash-table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+html:has(.screen)::-webkit-scrollbar-track, .screen .dash-table-wrap::-webkit-scrollbar-track { background: transparent; }
+html:has(.screen)::-webkit-scrollbar-thumb, .screen .dash-table-wrap::-webkit-scrollbar-thumb {
+  border-radius: 999px; background: color-mix(in oklab, var(--ink) 25%, transparent);
+}
+html:has(.screen)::-webkit-scrollbar-thumb:hover, .screen .dash-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--ink) 42%, transparent);
+}
+
+/* ---------------------------------------------------------------- icons inside buttons and links */
+.screen .btn svg.lucide { margin-left: -2px; }
+/* the kit draws the link arrow as a text glyph; these screens use the line icon instead */
+.screen .link::after { content: none; }
+.screen .link .ui-nudge { transition: transform var(--ui-out) var(--ui-ease); }
+@media (hover: hover) and (pointer: fine) {
+  .screen .link:hover .ui-nudge { transform: translateX(3px); transition-duration: var(--ui-in); }
+}
+.ui-spin { animation: ui-spin 0.9s linear infinite; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------- keyframes */
+@keyframes ui-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes ui-fade { from { opacity: 0; } }
+@keyframes ui-chip { from { opacity: 0; transform: scale(.94); } }
+@keyframes ui-shimmer { to { background-position: -50% 0; } }
+
+/* ---------------------------------------------------------------- toasts */
+.toast-host {
+  position: fixed; right: 20px; bottom: 20px; z-index: 1000;
+  display: flex; flex-direction: column; gap: 10px; max-width: min(380px, calc(100vw - 32px));
+}
+.toast {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-radius: var(--r-md);
+  background: var(--p-inv-bg); color: var(--p-inv-ink); font-size: var(--t-small);
+  box-shadow: 0 18px 40px -18px rgb(42 29 23 / 0.6);
+  animation: toast-in var(--m-slide, 240ms) var(--m-ease, cubic-bezier(.2, .8, .2, 1));
+  transition: opacity 180ms var(--m-ease, ease), transform 180ms var(--m-ease, ease);
+}
+.toast.is-leaving { opacity: 0; transform: translateY(6px); }
+.toast__icon { margin-top: 2px; color: #c9c1b5; }
+.toast-success .toast__icon { color: #8fc27f; }
+.toast-error .toast__icon { color: #f08a78; }
+.toast > span { flex: 1; }
+.toast > span { padding-top: 2px; line-height: 1.5; }
+.toast button {
+  flex-shrink: 0; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -8px -6px 0;
+  border: 0; border-radius: 50%; background: transparent; color: inherit; font-size: 20px; line-height: 1; padding: 0;
+  opacity: 0.7; cursor: pointer; transition: opacity var(--m-in, 140ms) ease, background-color var(--m-in, 140ms) ease;
+}
+.toast button:hover { opacity: 1; background: rgb(255 255 255 / 0.08); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (max-width: 639px) {
+  .toast-host { right: 12px; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); max-width: none; }
+  .toast button { width: 44px; height: 44px; margin: -12px -14px -12px 0; }
+}
+
+/* ---------------------------------------------------------------- reduced motion: everything rests */
+@media (prefers-reduced-motion: reduce) {
+  .toast, .status, .form-error, .slot-grid--in, .skel, .dash-swap, .dash-expand, .dash-expand__in, .dash-notice.is-new { animation: none !important; }
+  .toast.is-leaving { transform: none; }
+  .slot:is(:hover, :active), .dash-stat:is(:hover, :active) { transform: none !important; }
+  .m-tab-ind { transition: none !important; }
+  .ui-spin { animation: none; }
+  .screen .link .ui-nudge { transform: none !important; }
+}

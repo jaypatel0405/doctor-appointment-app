@@ -1,15 +1,49 @@
 <!doctype html>
-<html lang="en">
+<!-- taste-skill deal: type software, radius round, lit ground sky, buttons pill (the centred hero's
+     own look), motion layer on. Palette green-mat-chocolate, type Host Grotesk + JetBrains Mono. -->
+<html lang="en" data-type="software" data-radius="round" data-ground="sky" data-buttons="pill" data-motion>
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MediBook+: online doctor appointments for patients</title>
     <meta
       name="description"
-      content="MediBook+ lets you find trusted doctors and book appointments online in minutes."
+      content="MediBook+ lets patients find a specialist, compare consultation fees and book a free time slot online."
     />
-    <meta name="theme-color" content="#1769aa" />
-    <title>MediBook+ | Book Doctor Appointments Online</title>
+    <meta name="site-kind" content="software" />
+    <meta name="page-type" content="software" />
+    <meta name="theme-color" content="#e5e1d8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/taste/system.css" />
+    <link rel="stylesheet" href="/taste/ui/cards.css" />
+    <link rel="stylesheet" href="/taste/motion/motion.css" />
+    <link rel="stylesheet" href="/taste/backgrounds/backgrounds.css" />
+    <link rel="stylesheet" href="/taste/layout/layout.css" />
+    <link rel="stylesheet" href="/taste/icons/icon.css" />
+    <style>
+      :root {
+        --p-bg: #e5e1d8; --p-surface: #dad5ca; --p-ink: #2a1d17; --p-muted: #65564c;
+        --p-accent: #456f3a; --p-accent-ink: #ffffff; --p-action: #456f3a; --p-action-ink: #ffffff;
+        --p-inv-bg: #2a1d17; --p-inv-surface: #352822; --p-inv-ink: #e5e1d8; --p-inv-muted: #9e968e;
+        --p-inv-accent: #e5e1d8; --p-inv-accent-ink: #2a1d17; --p-inv-action: #e5e1d8; --p-inv-action-ink: #2a1d17;
+        --font-display: "Host Grotesk", system-ui, sans-serif;
+        --font-text: "Host Grotesk", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        --display-weight: 500;
+        --display-tracking: -0.035em;
+        --display-tracking-xl: -0.04em;
+      }
+    </style>
+    <link rel="stylesheet" href="/taste/ui/base.css" />
+    <link rel="stylesheet" href="/taste/ui/search/fragment.css" />
+    <link rel="stylesheet" href="/taste/ui/calendar/fragment.css" />
+    <link rel="stylesheet" href="/taste/ui/notify/fragment.css" />
+    <link rel="stylesheet" href="/taste/moments/pinned-chapters/moment.css" />
+    <script src="/taste/backgrounds/backgrounds.js"></script>
+    <script>document.documentElement.classList.add('mo-js');setTimeout(()=>document.documentElement.classList.add('mo-safe'),2500)</script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,6 +1,6 @@
 // Creates (or resets) the admin account.
 // Usage:  npm run seed:admin
-// Override the defaults with ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME in .env.
+// ADMIN_PASSWORD is required (no default). ADMIN_EMAIL / ADMIN_NAME are optional.
 require("dotenv").config();
 
 const mongoose = require("mongoose");
@@ -16,7 +16,11 @@ async function createAdmin() {
     await mongoose.connect(process.env.MONGO_URI);
 
     const email = (process.env.ADMIN_EMAIL || "admin@medibook.com").toLowerCase();
-    const password = process.env.ADMIN_PASSWORD || "Admin@12345";
+    const password = process.env.ADMIN_PASSWORD || "";
+
+    if (!password) {
+      throw new Error("ADMIN_PASSWORD is required (set it in .env or the environment)");
+    }
     const name = process.env.ADMIN_NAME || "MediBook Admin";
 
     if (password.length < 8) {
@@ -46,7 +50,6 @@ async function createAdmin() {
     }
 
     console.log("Email:", email);
-    console.log("Password:", password);
   } catch (error) {
     console.error("Error:", error.message);
     process.exitCode = 1;

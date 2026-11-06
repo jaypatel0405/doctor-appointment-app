@@ -76,8 +76,8 @@ MONGO_URI=mongodb+srv://<user>:<password>@<cluster>/medibook?retryWrites=true&w=
 JWT_SECRET=some-long-random-string
 ```
 
-Create the admin account (defaults to `admin@medibook.com` / `Admin@12345`;
-override with `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` in `.env`):
+Create the admin account. `ADMIN_PASSWORD` is required (min 8 chars); `ADMIN_EMAIL`
+(default `admin@medibook.com`) and `ADMIN_NAME` are optional:
 
 ```bash
 npm run seed:admin
@@ -90,7 +90,8 @@ npm start          # or: npm run dev   (restarts on file changes)
 ```
 
 The server listens on http://localhost:5000 and prints every available route.
-On the first run it inserts six starter doctors.
+On start it inserts six starter doctors if the collection is empty (idempotent;
+also available as `npm run seed:doctors`).
 
 > **MongoDB Atlas:** if the server fails with an "IP not whitelisted" error, add
 > your current IP address under *Network Access* in the Atlas dashboard.
@@ -104,7 +105,8 @@ npm run dev
 
 Open http://localhost:5173.
 
-The frontend talks to `http://localhost:5000` by default. To use another backend
+In dev the frontend talks to `http://localhost:5000`; production builds call the
+same origin (`/api/...`). To use another backend
 URL, create a `.env` file in the project root (see `.env.example`):
 
 ```
@@ -181,3 +183,75 @@ Leave them blank to disable email (in-app notifications still work).
 | server   | `npm start`          | Start the API                      |
 | server   | `npm run dev`        | Start the API with auto-restart    |
 | server   | `npm run seed:admin` | Create / reset the admin account   |
+
+---
+
+## Deploy to Vercel (free Hobby plan)
+
+One Vercel project serves both parts:
+
+- **Frontend**: `npm run build` (Vite) -> static files in `dist/` (including `public/taste/`).
+- **API**: `api/index.js` is a single serverless function that wraps the Express app
+  from `server/app.js`. `vercel.json` rewrites `/api/(.*)` to it; Express sees the
+  original path (e.g. `/api/doctors`). Every other path that is not a real file falls
+  back to `/index.html`.
+- **Database**: your existing MongoDB Atlas cluster. The connection is cached across
+  warm invocations (`server/db.js`).
+
+`vercel.json` installs root deps and `server/` deps (`npm install --prefix server`),
+so the function can use the server's own `package.json`.
+
+### 1. Prepare MongoDB Atlas
+
+1. *Network Access* -> *Add IP Address* -> `0.0.0.0/0` (Vercel functions have no fixed IPs).
+2. Because the cluster is then reachable from anywhere, use a dedicated database user
+   with a long random password and only the `readWrite` role on the app database.
+3. Copy the `mongodb+srv://...` connection string (include the database name, e.g. `/medibook`).
+
+### 2. Import the project
+
+1. Push this repo to GitHub (`jaypatel0405/doctor-appointment-app`).
+2. vercel.com -> *Add New...* -> *Project* -> import `jaypatel0405/doctor-appointment-app`.
+3. Framework preset: **Vite**. Root directory: the repo root. Leave build/output/install
+   settings at their defaults - `vercel.json` sets them.
+4. Add the environment variables below (Production and Preview), then *Deploy*.
+
+### 3. Environment variables (Vercel -> Project -> Settings -> Environment Variables)
+
+| Variable       | Required | Notes |
+| -------------- | -------- | ----- |
+| `MONGO_URI`    | yes      | Atlas connection string |
+| `JWT_SECRET`   | yes      | long random string (e.g. `openssl rand -hex 32`) |
+| `CORS_ORIGINS` | no       | comma list of extra allowed origins, e.g. `https://medibook.vercel.app,https://www.example.com`. Same-origin requests and the Vercel deployment URL are allowed automatically. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | no | email notifications; disabled when unset |
+
+Do **not** set `VITE_API_URL` - production builds call the API on the same domain.
+If `MONGO_URI`/`JWT_SECRET` are missing, the API answers `500` with a JSON message.
+
+### 4. One-time seeds (run from your machine against Atlas)
+
+The function never seeds. Run once, with `server/.env` pointing at the Atlas database
+(`MONGO_URI`) and a strong `ADMIN_PASSWORD`:
+
+```bash
+cd server
+npm run seed:doctors   # inserts starter doctors only if none exist
+npm run seed:admin     # creates/updates the admin account (ADMIN_PASSWORD required)
+```
+
+Your machine's IP must be allowed in Atlas (it is, with `0.0.0.0/0`).
+
+### 5. Check it
+
+- `https://<your-app>.vercel.app/api/health` -> `{"success":true,...,"database":"connected"}`
+- `https://<your-app>.vercel.app/` -> the app
+
+### Hobby plan limits
+
+- Non-commercial / personal use only; a commercial app needs the Pro plan.
+- Function duration is capped (this project sets `maxDuration: 10` seconds); slow SMTP
+  servers count against it because emails are sent inside the request.
+- Cold starts: the first request after idle time loads Express and opens a new MongoDB
+  connection (typically 1-3 s). Warm requests reuse it.
+- Atlas free tier (M0) allows a limited number of connections; each warm function
+  instance holds a small pool (`maxPoolSize: 5`).
