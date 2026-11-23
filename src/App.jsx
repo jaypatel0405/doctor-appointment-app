@@ -71,6 +71,23 @@ function scrollTop() {
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
+// The staff screens have their own address, /admin (sign-in, or the dashboard once signed in);
+// every other screen lives at /. Screens are still chosen by state: the URL follows the screen,
+// and a visit, refresh or back/forward to an address picks the screen back.
+const ADMIN_PATH = "/admin";
+const isAdminPath = (path) => path === ADMIN_PATH || path.startsWith(`${ADMIN_PATH}/`);
+const isAdminPage = (page) => page === "admin" || page === "admin-login";
+
+function pageFromLocation() {
+  return isAdminPath(window.location.pathname) ? "admin" : "home";
+}
+
+const TITLES = {
+  "admin-login": "Staff sign in · MediBook+",
+  admin: "Clinic dashboard · MediBook+",
+};
+const DEFAULT_TITLE = document.title;
+
 export default function App() {
   return (
     <>
@@ -81,7 +98,36 @@ export default function App() {
 }
 
 function Screens() {
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useState(pageFromLocation);
+
+  // keep the address bar on the screen's address
+  useEffect(() => {
+    const path = window.location.pathname;
+    const want = isAdminPage(page) ? ADMIN_PATH : "/";
+
+    if (want === ADMIN_PATH ? !isAdminPath(path) : path !== "/") {
+      // an unknown address (or a stray /admin/...) is corrected in place; a real move is a new entry
+      const known = path === "/" || isAdminPath(path);
+      window.history[known ? "pushState" : "replaceState"](null, "", want);
+    }
+  }, [page]);
+
+  // back and forward between / and /admin
+  useEffect(() => {
+    function onPopState() {
+      setPage(pageFromLocation());
+      scrollTop();
+    }
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    const signedIn = page === "admin" && getToken("admin");
+    document.title =
+      TITLES[page === "admin" && !signedIn ? "admin-login" : page] || DEFAULT_TITLE;
+  }, [page]);
 
   const [user, setUser] = useState(() =>
     getToken("patient") ? getSavedUser("patient") : null
