@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
+  Banknote,
   CalendarX2,
+  CreditCard,
   LogOut,
   RefreshCw,
   Search,
+  Smartphone,
   Stethoscope,
   Users,
 } from 'lucide-react'
 import AppBar, { TabRail } from './AppBar'
 import Checkbox from './ui/Checkbox'
+import ChoiceGroup from './ui/ChoiceGroup'
 import { useConfirm } from './ui/useConfirm'
 import './dashboard.css'
 import {
@@ -34,6 +38,13 @@ function smoothOrInstant() {
 
 const adminRequest = (path, options = {}) =>
   apiRequest(path, { ...options, scope: 'admin' })
+
+// How a patient can pay at the clinic (the server's PAYMENT_METHODS)
+const PAYMENT_OPTIONS = [
+  { value: 'Cash', label: 'Cash', icon: Banknote },
+  { value: 'UPI', label: 'UPI', icon: Smartphone },
+  { value: 'Card', label: 'Card', icon: CreditCard },
+]
 
 const EMPTY_DOCTOR_FORM = {
   name: '',
@@ -216,11 +227,25 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
   // ---------- appointments ----------
 
   async function updateStatus(appointment, status) {
+    // How the patient paid; the server records it on the receipt it issues on completion.
+    let paymentMethod = 'Cash'
+
     const prompts = {
       Completed: {
         title: 'Mark this appointment as completed?',
-        description: `${appointment.patientName} with ${appointment.doctorName}, ${formatDate(appointment.date)} at ${appointment.time}.`,
-        confirmLabel: 'Mark completed',
+        description: `${appointment.patientName} with ${appointment.doctorName}, ${formatDate(appointment.date)} at ${appointment.time}. A payment receipt for ₹${Number(appointment.fee || 0).toLocaleString('en-IN')} is issued to the patient.`,
+        body: (
+          <ChoiceGroup
+            name="payment-method"
+            label="Paid by"
+            options={PAYMENT_OPTIONS}
+            defaultValue={paymentMethod}
+            onChange={value => {
+              paymentMethod = value
+            }}
+          />
+        ),
+        confirmLabel: 'Complete and issue receipt',
         cancelLabel: 'Not yet',
       },
       Cancelled: {
@@ -237,13 +262,17 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
     setUpdatingId(appointment.id)
 
     try {
-      await adminRequest(`/api/appointments/${appointment.id}/status`, {
+      const data = await adminRequest(`/api/appointments/${appointment.id}/status`, {
         method: 'PUT',
-        body: { status },
+        body: status === 'Completed' ? { status, paymentMethod } : { status },
       })
 
+      const receiptNumber = data?.appointment?.receipt?.number
+
       showToast(
-        `Appointment for ${appointment.patientName} marked as ${status.toLowerCase()}.`,
+        receiptNumber
+          ? `Appointment for ${appointment.patientName} completed. Receipt ${receiptNumber} issued.`
+          : `Appointment for ${appointment.patientName} marked as ${status.toLowerCase()}.`,
         'success'
       )
 
@@ -477,6 +506,14 @@ export default function AdminDashboard({ adminUser, onBack, onLogout }) {
 
   function renderAppointmentActions(appointment) {
     const busy = updatingId === appointment.id
+
+    if (appointment.status === 'Completed' && appointment.receipt) {
+      return (
+        <span className="muted">
+          Receipt {appointment.receipt.number}, paid by {appointment.receipt.method}
+        </span>
+      )
+    }
 
     if (appointment.status === 'Cancelled' || appointment.status === 'Completed') {
       return <span className="muted">No actions</span>

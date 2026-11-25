@@ -11,6 +11,7 @@ const { validate, rules, OBJECT_ID_PATTERN } = require("../middleware/validate")
 const { bookingLimiter } = require("../middleware/security");
 
 const { sendMail } = require("../utils/mailer");
+const { PAYMENT_METHODS, buildReceipt } = require("../utils/receipts");
 const { handle, isDuplicateKey } = require("../utils/errors");
 const logger = require("../utils/logger");
 
@@ -78,6 +79,11 @@ const statusSchema = {
     status: rules.oneOf(APPOINTMENT_STATUSES, {
       required: true,
       message: "Invalid appointment status",
+    }),
+    // How the patient paid; recorded on the receipt when the status is Completed.
+    paymentMethod: rules.oneOf(PAYMENT_METHODS, {
+      default: "Cash",
+      message: `Payment method must be one of: ${PAYMENT_METHODS.join(", ")}`,
     }),
   },
 };
@@ -350,7 +356,7 @@ router.put(
   validate(statusSchema),
   handle("Unable to update appointment status", async (req, res) => {
     const { id } = req.valid.params;
-    const { status } = req.body;
+    const { status, paymentMethod } = req.body;
 
     const current = await Appointment.findById(id);
 
@@ -382,10 +388,23 @@ router.put(
       });
     }
 
+    const changes = { status };
+
+    // Completing the visit issues the payment receipt in the same update, so a
+    // completed appointment always carries one. (If the update then loses a race,
+    // its receipt number is simply skipped: numbers stay unique, not gapless.)
+    if (status === "Completed") {
+      const admin = await User.findById(req.user.userId).select("name").lean();
+      changes.receipt = await buildReceipt(current, {
+        method: paymentMethod,
+        issuedBy: admin?.name,
+      });
+    }
+
     // Only apply the change if nobody else changed the status meanwhile.
     const appointment = await Appointment.findOneAndUpdate(
       { _id: id, status: current.status },
-      { $set: { status } },
+      { $set: changes },
       { new: true, runValidators: true }
     );
 
@@ -400,7 +419,9 @@ router.put(
 
       Completed: `Your appointment with ${describeSlot(
         appointment
-      )} has been marked as completed. We hope you are feeling better!`,
+      )} has been marked as completed. Your payment receipt ${
+        appointment.receipt?.number || ""
+      } is ready in My appointments. We hope you are feeling better!`,
 
       Cancelled: `Your appointment with ${describeSlot(
         appointment

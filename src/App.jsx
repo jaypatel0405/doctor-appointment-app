@@ -123,12 +123,6 @@ function Screens() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  useEffect(() => {
-    const signedIn = page === "admin" && getToken("admin");
-    document.title =
-      TITLES[page === "admin" && !signedIn ? "admin-login" : page] || DEFAULT_TITLE;
-  }, [page]);
-
   const [user, setUser] = useState(() =>
     getToken("patient") ? getSavedUser("patient") : null
   );
@@ -136,6 +130,14 @@ function Screens() {
   const [adminUser, setAdminUser] = useState(() =>
     getToken("admin") ? getSavedUser("admin") : null
   );
+
+  // signing in or out on /admin changes the screen without changing the page
+  const adminSignedIn = Boolean(adminUser && getToken("admin"));
+
+  useEffect(() => {
+    document.title =
+      TITLES[page === "admin" && !adminSignedIn ? "admin-login" : page] || DEFAULT_TITLE;
+  }, [page, adminSignedIn]);
 
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);

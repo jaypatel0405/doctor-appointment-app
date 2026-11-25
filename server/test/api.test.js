@@ -499,11 +499,58 @@ describe("appointments", () => {
       { $set: { appointmentDate: "2020-01-06" } }
     );
 
+    const badMethod = await api()
+      .put(`/api/appointments/${appointmentId}/status`)
+      .set(auth(adminToken))
+      .send({ status: "Completed", paymentMethod: "Cheque" });
+    assert.equal(badMethod.status, 400);
+
     const done = await api()
       .put(`/api/appointments/${appointmentId}/status`)
       .set(auth(adminToken))
-      .send({ status: "Completed" });
+      .send({ status: "Completed", paymentMethod: "UPI" });
     assert.equal(done.status, 200);
+
+    // completing issues the payment receipt
+    const receipt = done.body.appointment.receipt;
+    assert.match(receipt.number, /^MB-\d{4}-\d{5}$/);
+    assert.equal(receipt.amount, 500);
+    assert.equal(receipt.currency, "INR");
+    assert.equal(receipt.method, "UPI");
+    assert.ok(receipt.issuedAt);
+
+    // the patient sees it in their own list
+    const mine = await api().get("/api/appointments").set(auth(patientA.token));
+    const seen = mine.body.appointments.find((item) => String(item._id) === String(appointmentId));
+    assert.equal(seen.receipt.number, receipt.number);
+
+    // the next completion gets the next number, and the method defaults to Cash
+    const second = await Appointment.create({
+      patient: patientA.user.id,
+      patientName: "Patient a",
+      patientEmail: "second-receipt@example.test",
+      doctorId: String(doctor._id),
+      doctorName: "Dr. Test",
+      specialty: "Cardiologist",
+      fee: 500,
+      appointmentDate: "2020-01-07",
+      appointmentTime: "11:00 AM",
+    });
+    const next = await api()
+      .put(`/api/appointments/${second._id}/status`)
+      .set(auth(adminToken))
+      .send({ status: "Completed" });
+    assert.equal(next.status, 200);
+    assert.equal(next.body.appointment.receipt.method, "Cash");
+    const seq = (number) => Number(number.split("-")[2]);
+    assert.equal(seq(next.body.appointment.receipt.number), seq(receipt.number) + 1);
+
+    // the completion notification tells the patient the receipt number
+    const notifications = await api().get("/api/notifications").set(auth(patientA.token));
+    assert.ok(
+      notifications.body.notifications.some((n) => n.message.includes(receipt.number)),
+      "the completion notification names the receipt"
+    );
 
     const closed = await api()
       .put(`/api/appointments/${appointmentId}/status`)

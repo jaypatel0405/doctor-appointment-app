@@ -9,10 +9,12 @@ import {
   Clock,
   IndianRupee,
   LogOut,
+  ReceiptText,
   RefreshCw,
 } from 'lucide-react'
 import AppBar, { TabRail } from './AppBar'
 import DatePicker from './ui/DatePicker'
+import ReceiptDialog from './ui/ReceiptDialog'
 import Select from './ui/Select'
 import { useConfirm } from './ui/useConfirm'
 import './dashboard.css'
@@ -113,6 +115,7 @@ export default function PatientDashboard({
   const [checkingSlots, setCheckingSlots] = useState(false)
   const [savingReschedule, setSavingReschedule] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [receiptFor, setReceiptFor] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
   const slotRequestRef = useRef(0)
@@ -1039,6 +1042,18 @@ export default function PatientDashboard({
                             {appointment.status}
                           </span>
 
+                          {appointment.receipt && (
+                            <button
+                              type="button"
+                              className="btn btn--secondary btn--sm dash-receipt-btn"
+                              onClick={() => setReceiptFor(appointment)}
+                              aria-label={`View receipt ${appointment.receipt.number} for ${appointment.doctorName}`}
+                            >
+                              <ReceiptText size={16} aria-hidden="true" />
+                              View receipt
+                            </button>
+                          )}
+
                           {canChange && !isEditing && (
                             <div className="dash-appt__actions">
                               <button
@@ -1187,6 +1202,10 @@ export default function PatientDashboard({
       </main>
 
       {confirmDialog}
+      <ReceiptDialog
+        appointment={receiptFor}
+        onClose={() => setReceiptFor(null)}
+      />
     </div>
   )
 }

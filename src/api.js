@@ -300,6 +300,17 @@ export function normalizeAppointment(item = {}) {
     reason: item.reason || "",
     status: item.status || "Pending",
     createdAt: item.createdAt || null,
+    // the payment receipt, issued when the clinic marks the visit completed
+    receipt: item.receipt?.number
+      ? {
+          number: item.receipt.number,
+          amount: Number(item.receipt.amount) || 0,
+          currency: item.receipt.currency || "INR",
+          method: item.receipt.method || "",
+          issuedAt: item.receipt.issuedAt || null,
+          issuedBy: item.receipt.issuedBy || "",
+        }
+      : null,
   };
 }
 

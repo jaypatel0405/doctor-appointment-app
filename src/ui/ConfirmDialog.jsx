@@ -7,7 +7,8 @@ import './ui.css'
  * The app's confirm dialog (Radix AlertDialog: focus trapped, Escape and the cancel button close,
  * focus returns to the control that opened it). Driven by useConfirm().
  *
- * request: { title, description, confirmLabel, cancelLabel, tone, action }
+ * request: { title, description, body, confirmLabel, cancelLabel, tone, action }
+ * - body (optional) is extra content under the description, e.g. a choice the action needs.
  * - confirmLabel null shows only the cancel button (an explanation, not a question).
  * - action (optional, async) runs on confirm; if it throws, its message shows inside the dialog
  *   and the dialog stays open.
@@ -79,6 +80,8 @@ export default function ConfirmDialog({ request, onSettle, onReturnFocus }) {
                   {view.title}
                 </AlertDialog.Description>
               )}
+
+              {view.body && <div className="ui-dialog__body">{view.body}</div>}
 
               {error && (
                 <p className="ui-dialog__error" role="alert">

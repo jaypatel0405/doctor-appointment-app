@@ -93,6 +93,22 @@ const appointmentSchema = new mongoose.Schema(
       ],
       default: "Pending",
     },
+
+    // Payment receipt, issued when the clinic marks the appointment completed.
+    receipt: {
+      type: new mongoose.Schema(
+        {
+          number: { type: String, required: true, trim: true, maxlength: 32 },
+          amount: { type: Number, required: true, min: 0 },
+          currency: { type: String, default: "INR", maxlength: 3 },
+          method: { type: String, enum: ["Cash", "UPI", "Card"], required: true },
+          issuedAt: { type: Date, required: true },
+          issuedBy: { type: String, trim: true, maxlength: 100, default: "" },
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
   },
   {
     timestamps: true,
@@ -129,6 +145,16 @@ appointmentSchema.index(
     name: "unique_active_slot",
     unique: true,
     partialFilterExpression: { status: { $in: ["Pending", "Confirmed", "Completed"] } },
+  }
+);
+
+// Receipt numbers are unique (only appointments that have a receipt are indexed).
+appointmentSchema.index(
+  { "receipt.number": 1 },
+  {
+    name: "unique_receipt_number",
+    unique: true,
+    partialFilterExpression: { "receipt.number": { $type: "string" } },
   }
 );
 
