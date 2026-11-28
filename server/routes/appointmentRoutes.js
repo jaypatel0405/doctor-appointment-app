@@ -10,8 +10,9 @@ const adminMiddleware = require("../middleware/adminMiddleware");
 const { validate, rules, OBJECT_ID_PATTERN } = require("../middleware/validate");
 const { bookingLimiter } = require("../middleware/security");
 
-const { sendMail } = require("../utils/mailer");
+const { sendMail, isConfigured: isMailConfigured } = require("../utils/mailer");
 const { PAYMENT_METHODS, buildReceipt } = require("../utils/receipts");
+const { receiptMessage } = require("../utils/receiptDocument");
 const { handle, isDuplicateKey } = require("../utils/errors");
 const logger = require("../utils/logger");
 
@@ -120,9 +121,13 @@ function slotConflictQuery({ doctorId, doctorName }, appointmentDate, appointmen
 }
 
 const MAIL_TIMEOUT_MS = 4000;
+// The receipt email builds a PDF and carries an attachment: allow a bit longer.
+const RECEIPT_MAIL_TIMEOUT_MS = 8000;
 
 // Create notification and send optional email. Never fails the request.
-async function notifyPatient(appointment, title, message) {
+// `email` (optional) is a builder for a custom message, e.g. the receipt with
+// its PDF; by default the notification text itself is emailed.
+async function notifyPatient(appointment, title, message, { email, timeoutMs = MAIL_TIMEOUT_MS } = {}) {
   try {
     await Notification.create({
       user: appointment.patient,
@@ -140,20 +145,31 @@ async function notifyPatient(appointment, title, message) {
   let timer;
 
   try {
-    await Promise.race([
-      sendMail({
-        to: appointment.patientEmail,
-        subject: `MediBook+ - ${title}`,
-        text: `Hello ${appointment.patientName},
+    const send = async () =>
+      sendMail(
+        email
+          ? await email()
+          : {
+              to: appointment.patientEmail,
+              subject: `MediBook+ - ${title}`,
+              text: `Hello ${appointment.patientName},
 
 ${message}
 
 Thank you for choosing MediBook+.`,
-      }),
+            }
+      );
+
+    const result = await Promise.race([
+      send(),
       new Promise((resolve) => {
-        timer = setTimeout(resolve, MAIL_TIMEOUT_MS);
+        timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
       }),
     ]);
+
+    if (result?.timedOut) {
+      logger.warn("email.send_slow", { message: `Email still sending after ${timeoutMs} ms`, title });
+    }
   } catch (error) {
     logger.error("email.send_failed", { error: { name: error.name, message: error.message } });
   } finally {
@@ -421,7 +437,9 @@ router.put(
         appointment
       )} has been marked as completed. Your payment receipt ${
         appointment.receipt?.number || ""
-      } is ready in My appointments. We hope you are feeling better!`,
+      } is ready in My appointments${
+        isMailConfigured() ? ` and a copy was emailed to ${appointment.patientEmail}` : ""
+      }. We hope you are feeling better!`,
 
       Cancelled: `Your appointment with ${describeSlot(
         appointment
@@ -432,7 +450,16 @@ router.put(
       )} is pending confirmation.`,
     };
 
-    await notifyPatient(appointment, `Appointment ${status.toLowerCase()}`, messages[status]);
+    // A completed visit emails the receipt itself (HTML + PDF) to the patient's
+    // registered email instead of the plain status note.
+    await notifyPatient(
+      appointment,
+      `Appointment ${status.toLowerCase()}`,
+      messages[status],
+      status === "Completed" && appointment.receipt
+        ? { email: () => receiptMessage(appointment), timeoutMs: RECEIPT_MAIL_TIMEOUT_MS }
+        : undefined
+    );
 
     return res.status(200).json({
       success: true,

@@ -643,6 +643,21 @@ describe("appointments", () => {
     assert.equal(receipt.method, "UPI");
     assert.ok(receipt.issuedAt);
 
+    // a soft copy is emailed to the patient's registered email, with a PDF attached
+    const { testOutbox } = require("../utils/mailer");
+    const mail = [...testOutbox].reverse().find((m) => m.subject.includes(receipt.number));
+    assert.ok(mail, "the receipt email was sent");
+    assert.equal(mail.to, "patient.a@example.com");
+    assert.match(mail.subject, /payment receipt/i);
+    assert.ok(mail.html.includes(receipt.number));
+    assert.ok(mail.text.includes("Paid by: UPI"));
+    assert.equal(mail.attachments.length, 1);
+    const [pdf] = mail.attachments;
+    assert.equal(pdf.filename, `MediBook-Receipt-${receipt.number}.pdf`);
+    assert.equal(pdf.contentType, "application/pdf");
+    assert.equal(pdf.content.subarray(0, 5).toString(), "%PDF-");
+    assert.ok(pdf.content.length > 1000);
+
     // the patient sees it in their own list
     const mine = await api().get("/api/appointments").set(auth(patientA.token));
     const seen = mine.body.appointments.find((item) => String(item._id) === String(appointmentId));

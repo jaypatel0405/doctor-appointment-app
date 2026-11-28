@@ -6,7 +6,8 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.js": {
-      "maxDuration": 15
+      "maxDuration": 15,
+      "includeFiles": "server/node_modules/pdfkit/js/data/**"
     }
   },
   "rewrites": [

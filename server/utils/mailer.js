@@ -50,9 +50,9 @@ function getTransporter() {
 // Messages "sent" while NODE_ENV=test, so tests can read verification codes.
 const testOutbox = [];
 
-async function sendMail({ to, subject, text, html }) {
+async function sendMail({ to, subject, text, html, attachments }) {
   if (process.env.NODE_ENV === "test") {
-    testOutbox.push({ to, subject, text, html });
+    testOutbox.push({ to, subject, text, html, attachments });
   }
 
   if (!isConfigured()) {
@@ -70,6 +70,7 @@ async function sendMail({ to, subject, text, html }) {
       subject,
       text: text || "",
       html: safeHtml,
+      ...(attachments?.length ? { attachments } : {}),
     });
 
     return { sent: true };
