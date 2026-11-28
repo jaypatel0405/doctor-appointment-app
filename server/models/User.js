@@ -44,6 +44,27 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+
+    // false until a new patient enters the code emailed at sign-up.
+    // Accounts created before email verification existed have no value and
+    // are treated as verified (only an explicit false blocks sign-in).
+    emailVerified: {
+      type: Boolean,
+    },
+
+    // The pending verification code (hash only). Never selected by default.
+    emailOtp: {
+      type: new mongoose.Schema(
+        {
+          codeHash: String,
+          expiresAt: Date,
+          attempts: { type: Number, default: 0 },
+          sentAt: Date,
+        },
+        { _id: false }
+      ),
+      select: false,
+    },
   },
   {
     timestamps: true,

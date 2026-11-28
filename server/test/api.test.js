@@ -29,12 +29,26 @@ function unsignedToken(payload) {
 }
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
 
+// The latest verification code emailed to this address (tests keep an outbox).
+function lastCode(email) {
+  const { testOutbox } = require("../utils/mailer");
+  const mail = [...testOutbox].reverse().find((m) => m.to === email);
+  assert.ok(mail, `no email was sent to ${email}`);
+  return /\b(\d{6})\b/.exec(mail.text)[1];
+}
+
+// Registers a patient and verifies the email with the emailed code.
 async function registerPatient(suffix) {
+  const email = `patient.${suffix}@example.com`;
   const res = await api()
     .post("/api/auth/register")
-    .send({ name: `Patient ${suffix}`, email: `patient.${suffix}@example.com`, password: "password123" });
+    .send({ name: `Patient ${suffix}`, email, password: "password123" });
   assert.equal(res.status, 201, JSON.stringify(res.body));
-  return { token: res.body.token, user: res.body.user };
+  assert.equal(res.body.needsVerification, true);
+
+  const verified = await api().post("/api/auth/verify-email").send({ email, code: lastCode(email) });
+  assert.equal(verified.status, 200, JSON.stringify(verified.body));
+  return { token: verified.body.token, user: verified.body.user };
 }
 
 let adminToken;
@@ -115,16 +129,124 @@ describe("platform", () => {
 
 // ------------------------------------------------------------------
 describe("auth", () => {
-  it("registers a patient and never returns the password", async () => {
+  it("registers a patient, emails a code and signs in only after verification", async () => {
     const res = await api()
       .post("/api/auth/register")
       .send({ name: "  New Person ", email: "New.Person@Example.com ", password: "password123" });
     assert.equal(res.status, 201);
+    assert.equal(res.body.needsVerification, true);
+    assert.equal(res.body.email, "new.person@example.com");
+    assert.equal(res.body.token, undefined);
+
+    const stored = await User.findOne({ email: "new.person@example.com" }).select("+emailOtp").lean();
+    assert.equal(stored.emailVerified, false);
+    assert.match(stored.emailOtp.codeHash, /^[0-9a-f]{64}$/);
+    assert.ok(!JSON.stringify(stored.emailOtp).includes(lastCode("new.person@example.com")));
+
+    const verified = await api()
+      .post("/api/auth/verify-email")
+      .send({ email: "new.person@example.com", code: lastCode("new.person@example.com") });
+    assert.equal(verified.status, 200);
+    assert.ok(verified.body.token);
+    assert.equal(verified.body.user.email, "new.person@example.com");
+    assert.equal(verified.body.user.name, "New Person");
+    assert.equal(verified.body.user.role, "patient");
+    assert.equal(verified.body.user.password, undefined);
+
+    const again = await api()
+      .post("/api/auth/verify-email")
+      .send({ email: "new.person@example.com", code: "000000" });
+    assert.equal(again.status, 409);
+  });
+
+  it("asks an unverified account for the code instead of signing it in", async () => {
+    const email = "unverified@example.com";
+    await api().post("/api/auth/register").send({ name: "Not Yet", email, password: "password123" });
+
+    const login = await api().post("/api/auth/login").send({ email, password: "password123" });
+    assert.equal(login.status, 403);
+    assert.equal(login.body.needsVerification, true);
+    assert.equal(login.body.token, undefined);
+    // within the resend cooldown no second email is sent
+    assert.ok(login.body.retryAfter > 0);
+
+    const resend = await api().post("/api/auth/resend-code").send({ email });
+    assert.equal(resend.status, 429);
+    assert.ok(resend.body.retryAfter > 0);
+
+    // unknown emails get the same calm answer (no account enumeration)
+    const unknown = await api().post("/api/auth/resend-code").send({ email: "nobody@example.com" });
+    assert.equal(unknown.status, 200);
+  });
+
+  it("locks a code after five wrong guesses and accepts a new one", async () => {
+    const email = "guesser@example.com";
+    await api().post("/api/auth/register").send({ name: "Guesser", email, password: "password123" });
+    const code = lastCode(email);
+    const wrong = code === "123456" ? "654321" : "123456";
+
+    for (let i = 4; i >= 1; i--) {
+      const res = await api().post("/api/auth/verify-email").send({ email, code: wrong });
+      assert.equal(res.status, 400);
+      assert.match(res.body.message, new RegExp(`${i} attempts? left`));
+    }
+    const fifth = await api().post("/api/auth/verify-email").send({ email, code: wrong });
+    assert.equal(fifth.status, 429);
+
+    // even the right code is refused once locked
+    const locked = await api().post("/api/auth/verify-email").send({ email, code });
+    assert.equal(locked.status, 429);
+
+    // after the cooldown a new code is sent and works
+    await User.updateOne({ email }, { $set: { "emailOtp.sentAt": new Date(Date.now() - 61_000) } });
+    const resend = await api().post("/api/auth/resend-code").send({ email });
+    assert.equal(resend.status, 200);
+    const fresh = lastCode(email);
+    const ok = await api().post("/api/auth/verify-email").send({ email, code: fresh });
+    assert.equal(ok.status, 200);
+    assert.ok(ok.body.token);
+  });
+
+  it("refuses an expired code and malformed codes", async () => {
+    const email = "late@example.com";
+    await api().post("/api/auth/register").send({ name: "Late", email, password: "password123" });
+    await User.updateOne({ email }, { $set: { "emailOtp.expiresAt": new Date(Date.now() - 1000) } });
+
+    const expired = await api().post("/api/auth/verify-email").send({ email, code: lastCode(email) });
+    assert.equal(expired.status, 400);
+    assert.match(expired.body.message, /expired/);
+
+    for (const code of ["12345", "abcdef", { $gt: "" }]) {
+      const res = await api().post("/api/auth/verify-email").send({ email, code });
+      assert.equal(res.status, 400);
+    }
+  });
+
+  it("lets an unverified sign-up be repeated, but never a verified one", async () => {
+    const email = "retry@example.com";
+    await api().post("/api/auth/register").send({ name: "First Try", email, password: "password123" });
+    const again = await api().post("/api/auth/register").send({ name: "Second Try", email, password: "password456" });
+    assert.equal(again.status, 201);
+    assert.equal(again.body.needsVerification, true);
+
+    const ok = await api().post("/api/auth/verify-email").send({ email, code: lastCode(email) });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.user.name, "Second Try");
+
+    const third = await api().post("/api/auth/register").send({ name: "Third", email, password: "password789" });
+    assert.equal(third.status, 409);
+  });
+
+  it("still signs in accounts created before email verification existed", async () => {
+    await User.create({
+      name: "Old Patient",
+      email: "old.patient@example.com",
+      password: await hashPassword("password123"),
+      role: "patient",
+    });
+    const res = await api().post("/api/auth/login").send({ email: "old.patient@example.com", password: "password123" });
+    assert.equal(res.status, 200);
     assert.ok(res.body.token);
-    assert.equal(res.body.user.email, "new.person@example.com");
-    assert.equal(res.body.user.name, "New Person");
-    assert.equal(res.body.user.role, "patient");
-    assert.equal(res.body.user.password, undefined);
   });
 
   it("rejects a duplicate email with 409", async () => {

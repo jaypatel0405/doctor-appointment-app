@@ -1,10 +1,13 @@
 
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, MailCheck, RotateCw } from "lucide-react";
 import AppBar from "./AppBar";
 import "./auth.css";
 import { apiRequest, saveSession } from "./api";
 import { showToast } from "./toast";
+import CodeInput from "./ui/CodeInput";
+
+const CODE_LENGTH = 6;
 
 const FIELD_IDS = {
   name: "auth-name",
@@ -28,7 +31,113 @@ export default function Auth({
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
+  // Email verification step: set when the server asks for the emailed code.
+  const [verify, setVerify] = useState(null); // { email, message }
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const [resending, setResending] = useState(false);
+
   const isRegister = mode === "register";
+
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const timer = setTimeout(() => setResendIn((value) => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  function startVerification(data, fallbackEmail) {
+    setVerify({
+      email: data.email || fallbackEmail,
+      message: data.message || "",
+    });
+    setCode("");
+    setCodeError("");
+    setError("");
+    setResendIn(Number(data.retryAfter) || 60);
+    // focus the first box once it is on screen
+    setTimeout(() => document.getElementById("auth-code")?.focus(), 50);
+  }
+
+  function finishSignIn(data, welcome) {
+    if (!data.token || !data.user) {
+      throw new Error("Unexpected response from the server.");
+    }
+
+    saveSession("patient", data.token, data.user);
+    showToast(welcome(data.user), "success");
+    onSuccess(data.user);
+  }
+
+  async function submitCode(value = code) {
+    if (loading) return;
+
+    if (!new RegExp(`^\\d{${CODE_LENGTH}}$`).test(value)) {
+      setCodeError(`Enter the ${CODE_LENGTH}-digit code from the email.`);
+      document.getElementById("auth-code")?.focus();
+      return;
+    }
+
+    setLoading(true);
+    setCodeError("");
+
+    try {
+      const data = await apiRequest("/api/auth/verify-email", {
+        method: "POST",
+        auth: false,
+        body: { email: verify.email, code: value },
+      });
+
+      finishSignIn(data, (user) => `Email verified. Welcome to MediBook+, ${user.name}!`);
+    } catch (requestError) {
+      if (requestError.status === 409) {
+        // already verified (e.g. in another tab): back to sign in
+        setVerify(null);
+        onModeChange("login");
+        setError(requestError.message);
+        return;
+      }
+
+      setCodeError(requestError.message || "That code did not work. Please try again.");
+      setCode("");
+      setTimeout(() => document.getElementById("auth-code")?.focus(), 0);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendCode() {
+    if (resending || resendIn > 0) return;
+
+    setResending(true);
+    setCodeError("");
+
+    try {
+      const data = await apiRequest("/api/auth/resend-code", {
+        method: "POST",
+        auth: false,
+        body: { email: verify.email },
+      });
+
+      setResendIn(Number(data.retryAfter) || 60);
+      setCode("");
+      showToast(data.message || "A new code is on its way.", "success");
+      document.getElementById("auth-code")?.focus();
+    } catch (requestError) {
+      if (requestError.data?.retryAfter) setResendIn(Number(requestError.data.retryAfter));
+      setCodeError(requestError.message || "Could not send a new code. Please try again.");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  function leaveVerification() {
+    setVerify(null);
+    setCode("");
+    setCodeError("");
+    setPassword("");
+    setConfirmPassword("");
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -94,22 +203,24 @@ export default function Auth({
         }
       );
 
-      if (!data.token || !data.user) {
-        throw new Error("Unexpected response from the server.");
+      // New accounts confirm their email with a code before signing in.
+      if (data.needsVerification) {
+        startVerification(data, cleanEmail);
+        return;
       }
 
-      // Save patient login session
-      saveSession("patient", data.token, data.user);
-
-      showToast(
+      finishSignIn(data, (user) =>
         isRegister
-          ? `Account created. Welcome to MediBook+, ${data.user.name}!`
-          : `Welcome back, ${data.user.name}!`,
-        "success"
+          ? `Account created. Welcome to MediBook+, ${user.name}!`
+          : `Welcome back, ${user.name}!`
       );
-
-      onSuccess(data.user);
     } catch (requestError) {
+      // Signing in to an account whose email is not verified yet.
+      if (requestError?.data?.needsVerification) {
+        startVerification(requestError.data, cleanEmail);
+        return;
+      }
+
       // The server's validator names the field ({ errors: [{ field, message }] }).
       const list = requestError?.data?.errors;
       const serverErrors = Array.isArray(list)
@@ -142,6 +253,104 @@ export default function Auth({
     setPassword("");
     setConfirmPassword("");
     onModeChange(isRegister ? "login" : "register");
+  }
+
+  if (verify) {
+    return (
+      <div className="screen">
+        <AppBar onHome={onHome} label="Verify your email">
+          <button
+            className="btn btn--secondary btn--sm"
+            type="button"
+            onClick={onHome}
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Back to home
+          </button>
+        </AppBar>
+
+        <main className="screen__main wrap auth__main">
+          <div className="panel-box panel-box--light auth__card auth__in">
+            <div className="auth__head">
+              <span className="auth__icon" aria-hidden="true">
+                <MailCheck size={22} />
+              </span>
+              <p className="eyebrow-label">One more step</p>
+              <h1>Check your email</h1>
+              <p>
+                Enter the {CODE_LENGTH}-digit code we sent to{" "}
+                <strong className="auth__email">{verify.email}</strong>. It
+                expires in 10 minutes.
+              </p>
+            </div>
+
+            <form
+              className="form auth__form"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                submitCode();
+              }}
+            >
+              <div className="field field--full">
+                <label htmlFor="auth-code">Verification code</label>
+                <CodeInput
+                  length={CODE_LENGTH}
+                  idPrefix="auth-code"
+                  value={code}
+                  onChange={(value) => {
+                    setCode(value);
+                    if (codeError) setCodeError("");
+                  }}
+                  onComplete={submitCode}
+                  disabled={loading}
+                  invalid={Boolean(codeError)}
+                  describedBy={codeError ? "auth-code-error" : undefined}
+                />
+                {codeError && (
+                  <span className="field-error" id="auth-code-error" role="alert">
+                    {codeError}
+                  </span>
+                )}
+              </div>
+
+              <button
+                className="btn btn--primary auth__submit"
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? "Checking…" : "Verify and sign in"}
+              </button>
+            </form>
+
+            <div className="auth__resend">
+              <span>Didn&rsquo;t get it? Check your spam folder, or</span>
+              <button
+                type="button"
+                className="link"
+                onClick={resendCode}
+                disabled={resending || resendIn > 0}
+              >
+                <RotateCw size={15} aria-hidden="true" className={resending ? "auth__spin" : undefined} />
+                {resendIn > 0
+                  ? `Send a new code in ${resendIn}s`
+                  : resending
+                    ? "Sending…"
+                    : "Send a new code"}
+              </button>
+            </div>
+
+            <p className="auth__switch">
+              Wrong email address?{" "}
+              <button type="button" className="link" onClick={leaveVerification}>
+                {isRegister ? "Change it" : "Back to sign in"}
+                <ArrowRight size={16} className="ui-nudge" aria-hidden="true" />
+              </button>
+            </p>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   return (

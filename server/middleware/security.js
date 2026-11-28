@@ -170,6 +170,14 @@ const registerLimiter = createLimiter({
   message: "Too many accounts created from this network. Please try again later.",
 });
 
+// Email verification: entering and re-sending codes, per IP. Each code also
+// locks after 5 wrong guesses (utils/emailOtp.js).
+const otpLimiter = createLimiter({
+  windowMs: 15 * MINUTE,
+  limit: () => intFromEnv("RATE_LIMIT_OTP_MAX", 30),
+  message: "Too many verification attempts. Please wait 15 minutes and try again.",
+});
+
 // Booking and rescheduling, per signed-in user (runs after authMiddleware).
 const bookingLimiter = createLimiter({
   windowMs: 15 * MINUTE,
@@ -187,5 +195,6 @@ module.exports = {
   apiLimiter,
   loginLimiter,
   registerLimiter,
+  otpLimiter,
   bookingLimiter,
 };

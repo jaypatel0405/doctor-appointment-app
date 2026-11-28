@@ -149,7 +149,9 @@ npm run preview    # serves the build locally
 
 | Method | Route                               | Access  | Purpose                              |
 | ------ | ----------------------------------- | ------- | ------------------------------------ |
-| POST   | `/api/auth/register`                | public  | Patient registration                 |
+| POST   | `/api/auth/register`                | public  | Patient registration (emails a code) |
+| POST   | `/api/auth/verify-email`            | public  | Check the 6-digit code, sign in      |
+| POST   | `/api/auth/resend-code`             | public  | Send a new code (once a minute)      |
 | POST   | `/api/auth/login`                   | public  | Patient login                        |
 | POST   | `/api/auth/admin-login`             | public  | Admin login                          |
 | GET    | `/api/auth/me`                      | token   | Current user                         |

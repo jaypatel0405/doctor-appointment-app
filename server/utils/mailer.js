@@ -47,7 +47,14 @@ function getTransporter() {
   return transporter;
 }
 
+// Messages "sent" while NODE_ENV=test, so tests can read verification codes.
+const testOutbox = [];
+
 async function sendMail({ to, subject, text, html }) {
+  if (process.env.NODE_ENV === "test") {
+    testOutbox.push({ to, subject, text, html });
+  }
+
   if (!isConfigured()) {
     return { skipped: true };
   }
@@ -76,4 +83,5 @@ async function sendMail({ to, subject, text, html }) {
 module.exports = {
   sendMail,
   isConfigured,
+  testOutbox,
 };
