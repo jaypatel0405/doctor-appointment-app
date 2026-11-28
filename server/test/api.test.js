@@ -373,7 +373,9 @@ describe("appointments", () => {
       .set(auth(patientB.token));
     assert.equal(res.status, 200);
     assert.deepEqual(res.body.bookedTimes.sort(), ["10:00 AM", "3:00 PM"]);
-    assert.equal(res.body.timeSlots.length, 6);
+    assert.deepEqual(res.body.timeSlots, [
+      "9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM",
+    ]);
 
     const excluded = await api()
       .get("/api/appointments/booked")

@@ -1,10 +1,14 @@
 const { timeZone } = require("../config");
 
-// Appointment time slots offered by the clinic (stored exactly as shown).
+// Appointment time slots offered by every doctor (stored exactly as shown):
+// one-hour visits from 9 AM, the last one starting at 4 PM and ending at 5 PM.
+// Keep in sync with src/api.js.
 const TIME_SLOTS = [
+  "9:00 AM",
   "10:00 AM",
   "11:00 AM",
   "12:00 PM",
+  "1:00 PM",
   "2:00 PM",
   "3:00 PM",
   "4:00 PM",

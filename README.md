@@ -186,7 +186,8 @@ over 20 kB, `429` rate limited, `503` database unavailable (with `Retry-After`),
 `GET /api/health` returns `200 {"database":"connected"}` or `503` when the
 database is unreachable.
 
-Appointment time slots: 10:00 AM, 11:00 AM, 12:00 PM, 2:00 PM, 3:00 PM, 4:00 PM.
+Appointment time slots (every doctor, 9 AM to 5 PM, one hour each): 9:00 AM,
+10:00 AM, 11:00 AM, 12:00 PM, 1:00 PM, 2:00 PM, 3:00 PM, 4:00 PM.
 
 ---
 

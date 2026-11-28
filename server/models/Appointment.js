@@ -1,5 +1,6 @@
 
 const mongoose = require("mongoose");
+const { TIME_SLOTS } = require("../utils/constants");
 
 const appointmentSchema = new mongoose.Schema(
   {
@@ -64,14 +65,7 @@ const appointmentSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      enum: [
-        "10:00 AM",
-        "11:00 AM",
-        "12:00 PM",
-        "2:00 PM",
-        "3:00 PM",
-        "4:00 PM",
-      ],
+      enum: TIME_SLOTS,
     },
 
     // Reason for appointment
